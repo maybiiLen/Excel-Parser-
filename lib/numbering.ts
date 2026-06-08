@@ -1,18 +1,29 @@
 import type { Section } from "./types";
 
 /**
- * Numbering walk (NOT YET IMPLEMENTED -- deferred past Day 1).
+ * Assign dotted numbers from a configurable root, returning a NEW tree.
  *
- * Assigns dotted numbers from a configurable root. Root 6 yields:
- *   6, 6.1, 6.2, 7, 7.1, ...
+ * Root 6 yields: 6, 6.1, 6.2, 7, 7.1, ...
  * Each section gets a single integer (starting at `root`); each subsection gets
- * `${section.number}.${index}`.
+ * `${section.number}.${index}` with the index starting at 1.
  *
- * Returns the same tree with every `number` field populated.
+ * The input is never mutated -- fresh section objects, `children` arrays, and
+ * subsection objects are returned, so the mapper's output (with its `""` numbers)
+ * is left untouched. The tree is exactly two levels deep; no grandchildren.
+ *
+ * TODO: `root` is assumed a positive integer; no validation for negative or
+ * fractional roots today.
  */
 export function numberTree(sections: Section[], root = 6): Section[] {
-  // TODO: walk sections, assign section.number then subsection.number.
-  void sections;
-  void root;
-  throw new Error("numberTree: not implemented yet");
+  return sections.map((section, i) => {
+    const number = String(root + i);
+    return {
+      ...section,
+      number,
+      children: section.children.map((sub, j) => ({
+        ...sub,
+        number: `${number}.${j + 1}`,
+      })),
+    };
+  });
 }
