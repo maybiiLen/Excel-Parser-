@@ -1,18 +1,77 @@
-import type { Body } from "./types";
+import type { Body, Section } from "./types";
 
 /**
- * Body -> HTML renderer (NOT YET IMPLEMENTED -- deferred past Day 1).
+ * Escape the three markup-significant characters in user-derived text.
  *
- * Converts a Body to an HTML string that pastes cleanly into Word:
+ * `&` is replaced first so the entities introduced for `<`/`>` are not
+ * double-escaped (e.g. `<` -> `&lt;`, never `&amp;lt;`).
+ *
+ * `"` / `'` are intentionally NOT escaped: every value we emit lands in element
+ * text content, never inside an attribute (all `style="..."` attributes are
+ * machine-generated constants), so the 3-character set is sufficient and keeps
+ * the Word paste clean.
+ */
+function escapeHtml(s: string): string {
+  return s.replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;");
+}
+
+/**
+ * Body -> HTML renderer.
+ *
+ * Emits markup that pastes cleanly into Word as native elements:
  *   - { type: "text" }    -> <p>...</p>
  *   - { type: "bullets" } -> <ul><li>...</li></ul>
- *   - { type: "table" }   -> <table>...</table>
+ *   - { type: "table" }   -> <table>...</table>  (inline borders so Word renders
+ *                            it as a real table; all rows treated alike, no <th>)
  *
- * A later sprint adds the wide-table width strategy (transpose or split) so
- * tables fit an 8.5x11 Word page.
+ * Pure: reads `body`, returns a string, mutates nothing. All user-derived text
+ * is escaped. A later sprint adds the wide-table width strategy (transpose or
+ * split) so tables fit an 8.5x11 Word page -- not handled here.
  */
 export function renderBody(body: Body): string {
-  // TODO: switch on body.type and emit Word-friendly HTML.
-  void body;
-  throw new Error("renderBody: not implemented yet");
+  switch (body.type) {
+    case "text":
+      return `<p>${escapeHtml(body.content)}</p>`;
+    case "bullets":
+      return `<ul>${body.items.map((item) => `<li>${escapeHtml(item)}</li>`).join("")}</ul>`;
+    case "table":
+      return `<table style="border-collapse:collapse">${body.rows
+        .map(
+          (row) =>
+            `<tr>${row
+              .map((cell) => `<td style="border:1px solid #000;padding:4px">${escapeHtml(cell)}</td>`)
+              .join("")}</tr>`,
+        )
+        .join("")}</table>`;
+  }
+}
+
+/**
+ * Render a numbered section tree as one HTML document fragment.
+ *
+ * Walks the tree in order, emitting a heading per node and the rendered body
+ * per subsection:
+ *   - section    -> <h2>{number} {title}</h2>
+ *   - subsection -> <h3>{number} {title}</h3> followed by renderBody(body)
+ *
+ * The dotted `number` is machine-generated (digits and dots) and is left
+ * unescaped; only user-derived text (titles, plus the body content) is escaped.
+ * Expects an already-numbered tree (see `numberTree`).
+ *
+ * Returns a fragment -- no <html>/<head>/<meta charset>/<body> wrapper. The
+ * clipboard MIME/charset framing belongs to the later clipboard-output step.
+ *
+ * Pure: builds a local array and returns its join; the input tree is never
+ * mutated (safe given numberTree returns only a shallow copy).
+ */
+export function renderTree(sections: Section[]): string {
+  const blocks: string[] = [];
+  for (const section of sections) {
+    blocks.push(`<h2>${section.number} ${escapeHtml(section.title)}</h2>`);
+    for (const sub of section.children) {
+      blocks.push(`<h3>${sub.number} ${escapeHtml(sub.title)}</h3>`);
+      blocks.push(renderBody(sub.body));
+    }
+  }
+  return blocks.join("\n");
 }
