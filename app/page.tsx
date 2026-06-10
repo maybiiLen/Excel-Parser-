@@ -8,9 +8,9 @@ export default function Home() {
           Excel &rarr; Word Sections
         </h1>
         <p className="text-foreground/60">
-          Paste a table copied from Excel or Google Sheets to see it parsed into
-          raw JSON rows. (Day-1 proof: paste &rarr; parse &rarr; JSON. Section
-          mapping, numbering, and Word export come next.)
+          Paste a table copied from Excel or Google Sheets to preview it as
+          numbered Word-style sections. Adjust the starting number, or toggle to
+          inspect the raw parsed JSON.
         </p>
       </header>
       <PasteInput />

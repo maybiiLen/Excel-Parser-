@@ -89,3 +89,44 @@ export function rowsToTree(rows: Grid): Section[] {
 
   return sections;
 }
+
+/**
+ * Header-aware transpose mapper for wide catalogs (header row + one row per item).
+ *
+ * Each data row becomes a top-level Section titled by the chosen `titleColumn`,
+ * with the selected `fieldColumns` rendered as a bulleted "Field: value" list
+ * held on the section body. Row 0 supplies the field names. The caller picks and
+ * orders `fieldColumns` (excluding the title column and any unchecked columns).
+ *
+ * Resilient like `rowsToTree`: never throws. Rows whose title cell is blank are
+ * skipped (same "only explicitly-titled sections" policy), so an only-header or
+ * empty grid yields `[]`. Empty `fieldColumns` yields sections with no bullets.
+ * The `number` field is left `""` for `numberTree`.
+ */
+export function rowsToAttributeSections(
+  rows: Grid,
+  titleColumn: number,
+  fieldColumns: number[],
+): Section[] {
+  const [header = [], ...dataRows] = rows;
+  const headers = header.map(cellToString);
+
+  const sections: Section[] = [];
+  for (const row of dataRows) {
+    const title = cellToString(row?.[titleColumn]).trim();
+    if (title === "") continue;
+
+    const items = fieldColumns.map(
+      (c) => `${headers[c]}: ${cellToString(row?.[c])}`,
+    );
+
+    sections.push({
+      number: "",
+      title,
+      children: [],
+      body: { type: "bullets", items },
+    });
+  }
+
+  return sections;
+}

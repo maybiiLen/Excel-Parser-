@@ -51,7 +51,8 @@ export function renderBody(body: Body): string {
  *
  * Walks the tree in order, emitting a heading per node and the rendered body
  * per subsection:
- *   - section    -> <h2>{number} {title}</h2>
+ *   - section    -> <h2>{number} {title}</h2> (+ renderBody(body) if the section
+ *                   carries one, e.g. the transpose layout's attribute table)
  *   - subsection -> <h3>{number} {title}</h3> followed by renderBody(body)
  *
  * The dotted `number` is machine-generated (digits and dots) and is left
@@ -68,6 +69,7 @@ export function renderTree(sections: Section[]): string {
   const blocks: string[] = [];
   for (const section of sections) {
     blocks.push(`<h2>${section.number} ${escapeHtml(section.title)}</h2>`);
+    if (section.body) blocks.push(renderBody(section.body));
     for (const sub of section.children) {
       blocks.push(`<h3>${sub.number} ${escapeHtml(sub.title)}</h3>`);
       blocks.push(renderBody(sub.body));

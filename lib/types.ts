@@ -11,6 +11,12 @@ export interface Section {
   /** Section title, e.g. "FRUIT". */
   title: string;
   children: Subsection[];
+  /**
+   * Optional body rendered directly under the section heading. Used by the
+   * header-aware transpose layout (one row -> one section, fields as a table);
+   * the A/B/C/D convention leaves this unset and puts bodies on subsections.
+   */
+  body?: Body;
 }
 
 /** A numbered subsection, e.g. `6.1 Fruit Description`. */
