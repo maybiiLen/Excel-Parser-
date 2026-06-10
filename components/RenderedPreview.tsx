@@ -1,3 +1,5 @@
+import type { HeadingStyle } from "@/lib/clipboard";
+
 /**
  * Read-only display of the rendered section HTML produced by `renderTree`.
  *
@@ -7,23 +9,26 @@
  * numbers, and constant `style` attributes -- no user value lands in an
  * attribute, so there is no injection surface.
  *
- * Tailwind v4 preflight strips heading sizes and list bullets, so we restore
- * basic typography with arbitrary-descendant variants on the wrapper. The table
- * borders come from inline styles in `renderTree` and need no help here.
+ * Tailwind v4 preflight strips heading sizes and list bullets. We restore
+ * spacing/lists with arbitrary-descendant variants, and the heading look
+ * (color/font/size/weight) from a scoped `<style>` so the preview matches what a
+ * "Copy for Word" + keep-source paste will produce. The heading-style values are
+ * sanitized in the form (hex color, allow-listed font, clamped sizes).
  */
 const previewClasses =
-  "rounded-lg border border-foreground/15 bg-foreground/[0.03] p-4 text-sm " +
-  "[&_h2]:mt-4 [&_h2]:text-xl [&_h2]:font-bold " +
-  "[&_h3]:mt-3 [&_h3]:text-base [&_h3]:font-semibold " +
+  "ws-preview rounded-lg border border-foreground/15 bg-foreground/[0.03] p-4 text-sm " +
+  "[&_h2]:mt-4 [&_h3]:mt-3 " +
   "[&_p]:my-2 [&_ul]:my-2 [&_ul]:list-disc [&_ul]:pl-6 " +
   "[&_table]:my-2 [&_td]:align-top";
 
 export function RenderedPreview({
   html,
   emptyHint,
+  headingStyle,
 }: {
   html: string;
   emptyHint?: string;
+  headingStyle: HeadingStyle;
 }) {
   if (html === "") {
     return (
@@ -34,11 +39,16 @@ export function RenderedPreview({
     );
   }
 
+  const h = headingStyle;
+  const weight = h.bold ? 700 : 400;
+  const css =
+    `.ws-preview h2{color:${h.color};font-family:'${h.font}';font-size:${h.h1Size}pt;font-weight:${weight}}` +
+    `.ws-preview h3{color:${h.color};font-family:'${h.font}';font-size:${h.h2Size}pt;font-weight:${weight}}`;
+
   return (
-    <div
-      aria-label="Rendered section preview"
-      className={previewClasses}
-      dangerouslySetInnerHTML={{ __html: html }}
-    />
+    <div aria-label="Rendered section preview" className={previewClasses}>
+      <style>{css}</style>
+      <div dangerouslySetInnerHTML={{ __html: html }} />
+    </div>
   );
 }

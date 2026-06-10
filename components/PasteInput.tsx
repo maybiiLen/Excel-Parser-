@@ -10,11 +10,21 @@ import {
 import { wrapInNumberedSection } from "@/lib/numbering";
 import { renderTree } from "@/lib/renderers";
 import { buildWordHtml, htmlToPlainText } from "@/lib/clipboard";
+import type { HeadingStyle } from "@/lib/clipboard";
 import type { Grid } from "@/lib/types";
 import { JsonPreview } from "./JsonPreview";
 import { RenderedPreview } from "./RenderedPreview";
 
 type Layout = "list" | "grouped" | "sections";
+
+const HEADING_FONTS = [
+  "Calibri Light",
+  "Calibri",
+  "Arial",
+  "Times New Roman",
+  "Georgia",
+  "Cambria",
+];
 
 /** First header containing "name" (case-insensitive), else the first column. */
 function pickDefaultTitleCol(rows: Grid): number {
@@ -56,9 +66,36 @@ export function PasteInput() {
   const [selectedCols, setSelectedCols] = useState<Set<number>>(new Set());
   const [copyState, setCopyState] = useState<"idle" | "copied" | "error">("idle");
   // Section number + title for the wrapping heading (e.g. "5 Fruit Database").
-  // Sticky: set to match the target document, not reset on paste/clear.
-  const [sectionNumber, setSectionNumber] = useState<number>(1);
+  // Sticky: set to match the target document, not reset on paste/clear. The
+  // number is held as a raw string so the field can be cleared/backspaced; the
+  // numeric value used for output is derived (empty/invalid -> 1).
+  const [sectionNumberInput, setSectionNumberInput] = useState<string>("1");
   const [sectionTitle, setSectionTitle] = useState<string>("");
+  const sectionNumber = useMemo(() => {
+    const n = parseInt(sectionNumberInput, 10);
+    return Number.isFinite(n) && n > 0 ? n : 1;
+  }, [sectionNumberInput]);
+
+  // Heading appearance, so a "keep source" paste matches the target document.
+  // Sticky (template metadata). Sizes held as strings so they can be cleared.
+  const [headingColor, setHeadingColor] = useState<string>("#2F5496");
+  const [headingFont, setHeadingFont] = useState<string>("Calibri Light");
+  const [h1SizeInput, setH1SizeInput] = useState<string>("16");
+  const [h2SizeInput, setH2SizeInput] = useState<string>("13");
+  const [headingBold, setHeadingBold] = useState<boolean>(false);
+  const headingStyle = useMemo<HeadingStyle>(() => {
+    const clampPt = (s: string, fallback: number) => {
+      const n = parseInt(s, 10);
+      return Number.isFinite(n) && n >= 1 && n <= 72 ? n : fallback;
+    };
+    return {
+      color: headingColor,
+      font: headingFont,
+      h1Size: clampPt(h1SizeInput, 16),
+      h2Size: clampPt(h2SizeInput, 13),
+      bold: headingBold,
+    };
+  }, [headingColor, headingFont, h1SizeInput, h2SizeInput, headingBold]);
 
   // Header row, for the title-column picker and field checklist.
   const headers = useMemo(
@@ -149,7 +186,9 @@ export function PasteInput() {
     }
     try {
       const item = new ClipboardItem({
-        "text/html": new Blob([buildWordHtml(html)], { type: "text/html" }),
+        "text/html": new Blob([buildWordHtml(html, headingStyle)], {
+          type: "text/html",
+        }),
         "text/plain": new Blob([htmlToPlainText(html)], { type: "text/plain" }),
       });
       await navigator.clipboard.write([item]);
@@ -158,6 +197,25 @@ export function PasteInput() {
       setCopyState("error");
     }
     setTimeout(() => setCopyState("idle"), 2000);
+  }
+
+  // Download a .doc (HTML that Word opens, applying the Heading styles via its
+  // file-open import -- more reliable than a browser->desktop clipboard paste).
+  // Open it in Word, then copy into the target document (Word->Word is lossless).
+  function downloadForWord() {
+    const safeName =
+      sectionTitle.trim().replace(/[^a-z0-9 _-]/gi, "").trim() || "word-sections";
+    const blob = new Blob([buildWordHtml(html, headingStyle)], {
+      type: "application/msword",
+    });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `${safeName}.doc`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
   }
 
   function clear() {
@@ -247,14 +305,14 @@ export function PasteInput() {
                   <label className="flex items-center gap-2 text-sm text-foreground/60">
                     Section #
                     <input
-                      type="number"
-                      min={1}
-                      step={1}
-                      value={sectionNumber}
-                      onChange={(e) => {
-                        const n = Math.floor(Number(e.target.value));
-                        if (Number.isFinite(n) && n > 0) setSectionNumber(n);
-                      }}
+                      type="text"
+                      inputMode="numeric"
+                      pattern="[0-9]*"
+                      value={sectionNumberInput}
+                      onChange={(e) =>
+                        setSectionNumberInput(e.target.value.replace(/[^0-9]/g, ""))
+                      }
+                      aria-label="Section number"
                       className="w-16 rounded-md border border-foreground/20 px-2 py-1 text-sm text-foreground"
                     />
                   </label>
@@ -283,6 +341,7 @@ export function PasteInput() {
                 type="button"
                 onClick={copyForWord}
                 disabled={html === ""}
+                title="Copies HTML to paste into Word. For headings to match your document, paste with 'Use Destination Styles' (Word → Options → Advanced → Pasting from other programs), or use Download for Word."
                 className="rounded-md border border-foreground/20 px-3 py-1 text-xs font-medium transition-colors hover:bg-foreground/5 disabled:cursor-not-allowed disabled:opacity-50"
               >
                 {copyState === "copied"
@@ -290,6 +349,15 @@ export function PasteInput() {
                   : copyState === "error"
                     ? "Copy failed"
                     : "Copy for Word"}
+              </button>
+              <button
+                type="button"
+                onClick={downloadForWord}
+                disabled={html === ""}
+                title="Downloads a .doc you can open in Word with the right Heading styles, then copy into your document (Word → Word keeps formatting)."
+                className="rounded-md border border-foreground/20 px-3 py-1 text-xs font-medium transition-colors hover:bg-foreground/5 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                Download for Word
               </button>
             </div>
             <button
@@ -300,6 +368,14 @@ export function PasteInput() {
               Clear
             </button>
           </div>
+
+          <p className="text-xs text-foreground/50">
+            Getting into Word: paste with <strong>Use Destination Styles</strong>{" "}
+            so headings match your document (set it as the default under Word →
+            Options → Advanced → &ldquo;Pasting from other programs&rdquo;), or{" "}
+            <strong>Download for Word</strong>, open the file, and copy it in
+            (Word&nbsp;→&nbsp;Word keeps formatting).
+          </p>
 
           {(layout === "list" || layout === "grouped") &&
             headers.length > 0 && (
@@ -321,11 +397,76 @@ export function PasteInput() {
               </div>
             )}
 
+          {layout !== "sections" && (
+            <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-sm text-foreground/70">
+              <span className="text-foreground/60">Heading style:</span>
+              <label className="flex items-center gap-1.5">
+                Color
+                <input
+                  type="color"
+                  value={headingColor}
+                  onChange={(e) => setHeadingColor(e.target.value)}
+                  aria-label="Heading color"
+                  className="h-6 w-8 cursor-pointer rounded border border-foreground/20"
+                />
+              </label>
+              <label className="flex items-center gap-1.5">
+                Font
+                <select
+                  value={headingFont}
+                  onChange={(e) => setHeadingFont(e.target.value)}
+                  className="rounded-md border border-foreground/20 px-2 py-1 text-sm text-foreground"
+                >
+                  {HEADING_FONTS.map((f) => (
+                    <option key={f} value={f}>
+                      {f}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="flex items-center gap-1.5">
+                H1 pt
+                <input
+                  type="text"
+                  inputMode="numeric"
+                  value={h1SizeInput}
+                  onChange={(e) =>
+                    setH1SizeInput(e.target.value.replace(/[^0-9]/g, ""))
+                  }
+                  aria-label="Heading 1 size in points"
+                  className="w-12 rounded-md border border-foreground/20 px-2 py-1 text-sm text-foreground"
+                />
+              </label>
+              <label className="flex items-center gap-1.5">
+                H2 pt
+                <input
+                  type="text"
+                  inputMode="numeric"
+                  value={h2SizeInput}
+                  onChange={(e) =>
+                    setH2SizeInput(e.target.value.replace(/[^0-9]/g, ""))
+                  }
+                  aria-label="Heading 2 size in points"
+                  className="w-12 rounded-md border border-foreground/20 px-2 py-1 text-sm text-foreground"
+                />
+              </label>
+              <label className="flex items-center gap-1.5">
+                <input
+                  type="checkbox"
+                  checked={headingBold}
+                  onChange={(e) => setHeadingBold(e.target.checked)}
+                />
+                Bold
+              </label>
+            </div>
+          )}
+
           {view === "json" ? (
             <JsonPreview grid={grid} />
           ) : (
             <RenderedPreview
               html={html}
+              headingStyle={headingStyle}
               emptyHint={
                 layout === "grouped"
                   ? "Pasted, but no groups were produced. The first row is read as headers; you need at least one data row. Pick a 'Group by' column and a label column above, or switch to JSON to inspect the raw grid."

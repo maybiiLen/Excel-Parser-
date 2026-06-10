@@ -1,26 +1,69 @@
-// Clipboard-output step: wrap the renderer's HTML fragment for a clean Word paste.
+// Word-output step: wrap the renderer's HTML fragment as Word-flavored HTML for
+// the clipboard ("Copy for Word") and the downloadable .doc ("Download for Word")
+// so headings land as native Word Heading styles, not just bold text.
 //
-// `renderTree` deliberately returns a bare fragment (no <html>/<head>/<body>) and
-// hands the MIME/charset framing to this module. We add ONLY the doc wrapper here
-// -- no Tailwind classes, no inline heading styles -- so the bare <h2>/<h3>/<ul>
-// tags map onto Word's native Heading/List styles on paste. The browser's
-// ClipboardItem writes the Windows CF_HTML header for us; we never hand-build it.
+// `renderTree` returns a bare fragment (no <html>/<head>/<body>) and hands the
+// MIME/charset framing to this module. The browser's ClipboardItem writes the
+// Windows CF_HTML header for us; we never hand-build it.
 
 /**
- * Wrap a rendered fragment in a minimal Word-friendly HTML document.
+ * Wrap a rendered fragment in a minimal Word-flavored HTML document. Used for
+ * BOTH the "Copy for Word" clipboard write and the "Download for Word" .doc file
+ * (which opens in Word, applying these styles reliably via file-open import).
  *
- * `<meta charset="utf-8">` is the load-bearing line (keeps Word from mis-decoding
- * entities / non-ASCII text). The `@page` rule is an intent signal for the
- * "open as .htm" path -- on paste-into-an-existing-doc Word keeps its own page
- * setup, so the 8.5x11 fit really comes from the content being narrow block flow
- * (headings + wrapping bullet lists, no wide tables). `overflow-wrap` is a
- * best-effort guard for a pathological long unbroken value.
+ * Headings are emitted as Word "MsoHeading" STYLE PARAGRAPHS, not <h1>/<h2>: a
+ * bare <h1> carries intrinsic bold/size that Word keeps as DIRECT formatting on a
+ * default "keep source" paste (masking the document's Heading style -- the cause
+ * of the "bold not styled" symptom). A <p> that carries only the style NAME (via
+ * `mso-style-name`, no visual props) gives Word nothing to keep, so it applies
+ * the destination doc's built-in Heading style. The office/word XML namespaces
+ * put Word into "read the mso-* hints" mode. Wrapper section -> "heading 1",
+ * children -> "heading 2" (matching a numbered report: "5 Fruit Database" peers
+ * with "4. Data Entry Section").
+ *
+ * Coupled to renderTree's attribute-less <h2>/<h3>: each is matched whole and
+ * heading text is escaped (so it can't contain the literal tags); <p>/<ul>/<li>/
+ * <table> are never matched. If renderTree emits heading attributes or a new
+ * level, update these replacements.
+ *
+ * Caveat: a browser can only place HTML/text on the clipboard (never Word's
+ * native/RTF formats), so a default Ctrl+V from another program may still keep
+ * source formatting -- pasting with "Use Destination Styles", or opening the
+ * downloaded .doc, applies the document's Heading styles reliably.
  */
-export function buildWordHtml(fragment: string): string {
+/**
+ * How the section headings should look, so a default "keep source" paste matches
+ * the destination document. The `mso-style-name` link is kept regardless, so the
+ * headings stay tagged as Word Heading 1/2 (visible in the outline); these props
+ * are the source formatting a keep-source paste preserves.
+ */
+export type HeadingStyle = {
+  color: string; // hex, e.g. "#2F5496"
+  font: string; // font-family name, e.g. "Calibri Light"
+  h1Size: number; // pt, wrapper / Heading 1
+  h2Size: number; // pt, children / Heading 2
+  bold: boolean;
+};
+
+export function buildWordHtml(fragment: string, heading: HeadingStyle): string {
+  const body = fragment
+    .replace(/<h2>([\s\S]*?)<\/h2>/g, '<p class="MsoHeading1">$1</p>')
+    .replace(/<h3>([\s\S]*?)<\/h3>/g, '<p class="MsoHeading2">$1</p>');
+  const weight = heading.bold ? "bold" : "normal";
+  const look = (size: number) =>
+    `color:${heading.color};font-family:"${heading.font}";font-size:${size}pt;font-weight:${weight}`;
   return (
-    `<!DOCTYPE html><html><head><meta charset="utf-8">` +
-    `<style>@page{size:8.5in 11in;margin:1in}body{overflow-wrap:break-word}</style>` +
-    `</head><body>${fragment}</body></html>`
+    `<html xmlns:o="urn:schemas-microsoft-com:office:office" ` +
+    `xmlns:w="urn:schemas-microsoft-com:office:word" ` +
+    `xmlns="http://www.w3.org/TR/REC-html40">` +
+    `<head><meta charset="utf-8">` +
+    `<style>` +
+    `@page{size:8.5in 11in;margin:1in}` +
+    `body{overflow-wrap:break-word}` +
+    `p.MsoHeading1{mso-style-name:"heading 1";mso-outline-level:1;${look(heading.h1Size)}}` +
+    `p.MsoHeading2{mso-style-name:"heading 2";mso-outline-level:2;${look(heading.h2Size)}}` +
+    `</style>` +
+    `</head><body>${body}</body></html>`
   );
 }
 
