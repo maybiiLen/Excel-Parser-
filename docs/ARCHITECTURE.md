@@ -6,14 +6,14 @@ The product is a **section tree**, not a flat table. Everything is built around 
 
 ```ts
 Section {
-  number: string        // "" today (numbering is not applied); "6" if numberTree is used
-  title: string         // "FRUIT" / a group value / an item name
+  number: string        // "5" for the wrapper heading (grouped/per-item); "" for A/B/C/D
+  title: string         // "Fruit Database" (wrapper) / a group value / an item name
   children: Subsection[]
   body?: Body            // optional: content rendered directly under the section heading
 }
 
 Subsection {
-  number: string        // "" today; "6.1" if numberTree is used
+  number: string        // "5.1", "5.2", … for wrapped views; "" for A/B/C/D
   title: string
   body: Body
 }
@@ -71,7 +71,8 @@ The grouped and per-item views are header-aware (row 0 = field names) and share 
 clipboard (text/html, else text/plain)
   -> SheetJS XLSX.read({ type: "string" })
   -> sheet_to_json({ header: 1, blankrows: false, defval: "", raw: false })   -> raw Grid
-  -> mapper (rowsToGroupedSections | rowsToAttributeSections | rowsToTree)     -> Section tree
+  -> mapper (rowsToGroupedSections | rowsToAttributeSections | rowsToTree)     -> Section[]
+  -> wrapInNumberedSection (grouped/per-item only: one numbered, titled section) -> Section tree
   -> renderTree (renderBody per text / bullets / table)                        -> HTML fragment
   -> live preview (RenderedPreview, dangerouslySetInnerHTML)
   -> buildWordHtml + htmlToPlainText -> navigator.clipboard.write             -> paste into Word
@@ -79,9 +80,12 @@ clipboard (text/html, else text/plain)
 
 `renderTree` escapes all user-derived text (`& < >`) and omits blank `number`s, so headings render as plain titles today. The JSON view shows the raw Grid instead of the rendered tree.
 
+## Numbering
+
+`lib/numbering.ts` exports `wrapInNumberedSection(items, sectionNumber, sectionTitle)`: it wraps the grouped/per-item output under one top-level section (the user-chosen number + title, e.g. `5 Fruit Database`) whose children are numbered `5.1`, `5.2`, … (1-based). It returns a fresh tree and is pure. The **A/B/C/D** view is not wrapped (it is already two levels deep). `renderTree` renders the numbers as-is and omits any that are blank.
+
 ## Not currently wired in
 
-- **Numbering.** `lib/numbering.ts` exports `numberTree` (assigns dotted numbers `6`, `6.1`, … from a configurable root, returning a fresh tree). It is fully implemented but **not imported by the UI** — output is intentionally un-numbered. `renderTree` already supports numbers when present.
 - **Wide-table width strategy.** Transpose/split so a wide table fits a Letter page is **not** implemented. It is largely moot for the grouped/per-item views (they emit narrow bullet lists, not tables); it only matters for the A/B/C/D view's `table` bodies. Page-fit today comes from the content being narrow block flow, reinforced by `buildWordHtml`'s `@page` + `overflow-wrap` hints.
 - **`.docx` generation.** Out of scope; export is HTML-on-clipboard only.
 
@@ -110,16 +114,17 @@ flowchart TD
     J["JsonPreview (raw Grid)"]
     W["buildWordHtml + htmlToPlainText"]
     X["navigator.clipboard.write -> paste into Word"]
+    NW["wrapInNumberedSection (number + title)"]
     A --> B --> C --> V
-    V -->|grouped| G --> T
-    V -->|list| L --> T
+    V -->|grouped| G --> NW
+    V -->|list| L --> NW
+    NW --> T
     V -->|sections| S --> T
     T --> R --> P
     C -.-> J
     R --> W --> X
 
-    N["numberTree (dotted numbers) -- implemented, not wired in"]
     K["wide-table transpose/split -- not implemented"]
-    class N,K deferred;
+    class K deferred;
     classDef deferred fill:#374151,stroke:#9ca3af,color:#e5e7eb;
 ```

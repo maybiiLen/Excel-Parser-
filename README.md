@@ -8,7 +8,7 @@ Wide Excel tables don't fit an 8.5" x 11" Word page — columns bleed off the ed
 
 ## Status
 
-**Working end to end:** paste → parse (SheetJS) → map → render → live preview → **Copy for Word**. You can view the data three ways and choose which columns appear; see the [roadmap](./docs/ROADMAP.md) for what's intentionally not wired in (numbering, wide-table transpose, `.docx`).
+**Working end to end:** paste → parse (SheetJS) → map → number → render → live preview → **Copy for Word**. You can view the data three ways, choose which columns appear, and slot it into a document under a numbered, titled section (e.g. `5 Fruit Database` → 5.1, 5.2, …). See the [roadmap](./docs/ROADMAP.md) for what's intentionally not wired in (wide-table transpose, `.docx`).
 
 ## Views
 
@@ -52,7 +52,7 @@ lib/
   types.ts           Section / Subsection / Body model + raw Grid
   parser.ts          SheetJS clipboard -> Grid
   mapper.ts          Grid -> section tree (rowsToTree / rowsToAttributeSections / rowsToGroupedSections)
-  numbering.ts       numberTree dotted numbering (implemented, not wired into the UI)
+  numbering.ts       wrapInNumberedSection: wrap grouped/per-item output in a numbered, titled section
   renderers.ts       section tree -> HTML fragment (renderTree / renderBody)
   clipboard.ts       Word-friendly clipboard wrapper (buildWordHtml / htmlToPlainText)
 docs/                OVERVIEW, ARCHITECTURE, ROADMAP

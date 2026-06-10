@@ -7,6 +7,7 @@ import {
   rowsToAttributeSections,
   rowsToGroupedSections,
 } from "@/lib/mapper";
+import { wrapInNumberedSection } from "@/lib/numbering";
 import { renderTree } from "@/lib/renderers";
 import { buildWordHtml, htmlToPlainText } from "@/lib/clipboard";
 import type { Grid } from "@/lib/types";
@@ -54,6 +55,10 @@ export function PasteInput() {
   const [groupCol, setGroupCol] = useState<number>(0);
   const [selectedCols, setSelectedCols] = useState<Set<number>>(new Set());
   const [copyState, setCopyState] = useState<"idle" | "copied" | "error">("idle");
+  // Section number + title for the wrapping heading (e.g. "5 Fruit Database").
+  // Sticky: set to match the target document, not reset on paste/clear.
+  const [sectionNumber, setSectionNumber] = useState<number>(1);
+  const [sectionTitle, setSectionTitle] = useState<string>("");
 
   // Header row, for the title-column picker and field checklist.
   const headers = useMemo(
@@ -76,18 +81,26 @@ export function PasteInput() {
     [headers, titleCol, groupCol, layout, selectedCols],
   );
 
-  // parse -> map -> render, derived from the stored grid so layout, columns, and
-  // field changes re-render without a re-paste. The mapper re-runs only on
-  // grid/layout/titleCol/groupCol/fieldColumns. Headings carry no number (unset
-  // by the mappers; omitted by renderTree).
+  // parse -> map -> (wrap in a numbered section) -> render, derived from the
+  // stored grid so layout/column/field/section changes re-render without a
+  // re-paste. The grouped and per-item views are wrapped under one numbered,
+  // titled heading (5 Fruit Database -> 5.1, 5.2, ...); A/B/C/D is left as-is.
   const tree = useMemo(() => {
     if (!grid) return null;
     if (layout === "list")
-      return rowsToAttributeSections(grid, titleCol, fieldColumns);
+      return wrapInNumberedSection(
+        rowsToAttributeSections(grid, titleCol, fieldColumns),
+        sectionNumber,
+        sectionTitle.trim(),
+      );
     if (layout === "grouped")
-      return rowsToGroupedSections(grid, groupCol, titleCol, fieldColumns);
+      return wrapInNumberedSection(
+        rowsToGroupedSections(grid, groupCol, titleCol, fieldColumns),
+        sectionNumber,
+        sectionTitle.trim(),
+      );
     return rowsToTree(grid);
-  }, [grid, layout, titleCol, groupCol, fieldColumns]);
+  }, [grid, layout, titleCol, groupCol, fieldColumns, sectionNumber, sectionTitle]);
   const html = useMemo(() => (tree ? renderTree(tree) : ""), [tree]);
 
   function handlePaste(e: ClipboardEvent<HTMLDivElement>) {
@@ -228,6 +241,34 @@ export function PasteInput() {
                     ))}
                   </select>
                 </label>
+              )}
+              {layout !== "sections" && (
+                <>
+                  <label className="flex items-center gap-2 text-sm text-foreground/60">
+                    Section #
+                    <input
+                      type="number"
+                      min={1}
+                      step={1}
+                      value={sectionNumber}
+                      onChange={(e) => {
+                        const n = Math.floor(Number(e.target.value));
+                        if (Number.isFinite(n) && n > 0) setSectionNumber(n);
+                      }}
+                      className="w-16 rounded-md border border-foreground/20 px-2 py-1 text-sm text-foreground"
+                    />
+                  </label>
+                  <label className="flex items-center gap-2 text-sm text-foreground/60">
+                    Section title
+                    <input
+                      type="text"
+                      value={sectionTitle}
+                      onChange={(e) => setSectionTitle(e.target.value)}
+                      placeholder="e.g. Fruit Database"
+                      className="w-48 rounded-md border border-foreground/20 px-2 py-1 text-sm text-foreground"
+                    />
+                  </label>
+                </>
               )}
               <button
                 type="button"

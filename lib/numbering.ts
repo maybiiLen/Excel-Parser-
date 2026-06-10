@@ -1,29 +1,35 @@
 import type { Section } from "./types";
 
 /**
- * Assign dotted numbers from a configurable root, returning a NEW tree.
+ * Wrap mapper output (a flat list of Sections, each carrying a bullets body) as
+ * the children of ONE numbered top-level section, returning a fresh tree.
  *
- * Root 6 yields: 6, 6.1, 6.2, 7, 7.1, ...
- * Each section gets a single integer (starting at `root`); each subsection gets
- * `${section.number}.${index}` with the index starting at 1.
+ * The chosen `sectionNumber`/`sectionTitle` become the top heading (e.g.
+ * `5 Fruit Database`); each input item becomes a numbered subsection
+ * `${sectionNumber}.${i + 1}` (5.1, 5.2, ...) carrying that item's body. This
+ * lets the grouped and per-item views slot their items into a larger Word
+ * document at a chosen section number.
  *
- * The input is never mutated -- fresh section objects, `children` arrays, and
- * subsection objects are returned, so the mapper's output (with its `""` numbers)
- * is left untouched. The tree is exactly two levels deep; no grandchildren.
- *
- * TODO: `root` is assumed a positive integer; no validation for negative or
- * fractional roots today.
+ * Empty input yields `[]` (renders as no HTML, so the empty hint still shows).
+ * Pure: the input is never mutated; titles are left unescaped (renderTree
+ * escapes them). Not used by the A/B/C/D view, which is already two levels deep.
  */
-export function numberTree(sections: Section[], root = 6): Section[] {
-  return sections.map((section, i) => {
-    const number = String(root + i);
-    return {
-      ...section,
-      number,
-      children: section.children.map((sub, j) => ({
-        ...sub,
-        number: `${number}.${j + 1}`,
+export function wrapInNumberedSection(
+  items: Section[],
+  sectionNumber: number,
+  sectionTitle: string,
+): Section[] {
+  if (items.length === 0) return [];
+  return [
+    {
+      number: String(sectionNumber),
+      title: sectionTitle,
+      children: items.map((item, i) => ({
+        number: `${sectionNumber}.${i + 1}`,
+        title: item.title,
+        // grouped/list items always set a bullets body; `??` only satisfies the type.
+        body: item.body ?? { type: "text", content: "" },
       })),
-    };
-  });
+    },
+  ];
 }

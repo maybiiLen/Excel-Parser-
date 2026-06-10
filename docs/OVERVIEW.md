@@ -29,8 +29,11 @@ The full pipeline is implemented end to end:
 
 See [ARCHITECTURE.md](./ARCHITECTURE.md) for the data model, view modes, and pipeline, and [ROADMAP.md](./ROADMAP.md) for status.
 
+## Numbering
+
+The grouped and per-item views wrap their output in one numbered, titled section — you pick a **Section #** (default 1) and a **Section title**, e.g. `5 Fruit Database`, and the items beneath are numbered `5.1`, `5.2`, … (`lib/numbering.ts` `wrapInNumberedSection`). The A/B/C/D view is left un-numbered.
+
 ## Not wired in
 
-- **Section numbering** (`6`, `6.1`, …) exists as a utility (`lib/numbering.ts`) but is not currently applied — output sections are un-numbered.
 - **Wide-table transpose/split** is not implemented (largely moot, since the active views emit narrow bullet lists rather than tables).
 - **`.docx` generation** is out of scope; export is HTML-on-clipboard only.

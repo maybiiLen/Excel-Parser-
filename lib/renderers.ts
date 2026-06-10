@@ -64,7 +64,7 @@ export function renderBody(body: Body): string {
  * clipboard MIME/charset framing belongs to the later clipboard-output step.
  *
  * Pure: builds a local array and returns its join; the input tree is never
- * mutated (safe given numberTree returns only a shallow copy).
+ * mutated.
  */
 export function renderTree(sections: Section[]): string {
   const blocks: string[] = [];
