@@ -17,7 +17,6 @@ type Props = {
   headingStyle: HeadingStyle;
   bodyFont: string;
   onChange: (patch: Partial<TableState>) => void;
-  onRemove: () => void;
 };
 
 function TableCardInner({
@@ -26,7 +25,6 @@ function TableCardInner({
   headingStyle,
   bodyFont,
   onChange,
-  onRemove,
 }: Props) {
   const [view, setView] = useState<"rendered" | "json">("rendered");
   const [copyState, setCopyState] = useState<"idle" | "copied" | "error">("idle");
@@ -95,21 +93,6 @@ function TableCardInner({
 
   return (
     <div className="flex flex-col gap-3 rounded-xl border border-foreground/15 p-4">
-      <div className="flex items-center justify-between">
-        <h2 className="text-sm font-semibold text-foreground/70">
-          Table {index + 1}
-        </h2>
-        <button
-          type="button"
-          onClick={onRemove}
-          aria-label={`Remove table ${index + 1}`}
-          title="Remove this table"
-          className="rounded-md border border-foreground/20 px-2 py-1 text-xs font-medium transition-colors hover:bg-foreground/5"
-        >
-          Remove
-        </button>
-      </div>
-
       <div className="flex flex-wrap items-center gap-4">
         <label className="flex items-center gap-2 text-sm text-foreground/60">
           Layout

@@ -28,6 +28,10 @@ export function PasteInput() {
   // Each paste appends one table; tables stack down the page in paste order.
   const [tables, setTables] = useState<TableState[]>([]);
   const [error, setError] = useState<string | null>(null);
+  // Which table's tab is open; only the active table is rendered (no scrolling
+  // through the rest). New pastes become active; removing the active tab falls
+  // to a neighbor.
+  const [activeId, setActiveId] = useState<string | null>(null);
   const [copyAllState, setCopyAllState] = useState<"idle" | "copied" | "error">(
     "idle",
   );
@@ -77,13 +81,12 @@ export function PasteInput() {
         return;
       }
       const t = pickDefaultTitleCol(rows);
+      const id = `t${++idRef.current}`;
       setTables((prev) => {
         const last = prev[prev.length - 1];
-        const nextNumber = last
-          ? String(sectionNumberOf(last) + 1)
-          : "1";
+        const nextNumber = last ? String(sectionNumberOf(last) + 1) : "1";
         const next: TableState = {
-          id: `t${++idRef.current}`,
+          id,
           grid: rows,
           layout: "grouped",
           titleCol: t,
@@ -94,6 +97,7 @@ export function PasteInput() {
         };
         return [...prev, next];
       });
+      setActiveId(id); // open the just-pasted table
       setError(null);
     } catch (err) {
       setError(
@@ -107,11 +111,21 @@ export function PasteInput() {
   }
 
   function removeTable(id: string) {
+    // If the open tab is removed, fall to the next tab (or the previous one if
+    // it was the last). Computed from the pre-removal order.
+    setActiveId((curr) => {
+      if (curr !== id) return curr;
+      const idx = tables.findIndex((t) => t.id === id);
+      const remaining = tables.filter((t) => t.id !== id);
+      if (remaining.length === 0) return null;
+      return remaining[Math.min(idx, remaining.length - 1)].id;
+    });
     setTables((ts) => ts.filter((t) => t.id !== id));
   }
 
   function clearAll() {
     setTables([]);
+    setActiveId(null);
     setError(null);
   }
 
@@ -159,6 +173,11 @@ export function PasteInput() {
   }
 
   const atLimit = tables.length >= MAX_TABLES;
+  // The open tab; fall back to the first table if the id ever goes stale.
+  const activeTable = tables.find((t) => t.id === activeId) ?? tables[0] ?? null;
+  const activeIndex = activeTable
+    ? tables.findIndex((t) => t.id === activeTable.id)
+    : -1;
 
   return (
     <div className="flex w-full flex-col gap-4">
@@ -327,17 +346,51 @@ export function PasteInput() {
             </label>
           </div>
 
-          {tables.map((t, i) => (
+          <div className="flex items-center gap-1.5 overflow-x-auto pb-1">
+            {tables.map((t, i) => {
+              const isActive = activeTable?.id === t.id;
+              const label = t.sectionTitle.trim() || `Table ${i + 1}`;
+              return (
+                <div
+                  key={t.id}
+                  className={`flex shrink-0 items-center gap-1.5 rounded-md border px-3 py-1.5 text-xs transition-colors ${
+                    isActive
+                      ? "border-foreground/30 bg-foreground/[0.06] font-medium text-foreground"
+                      : "border-foreground/15 text-foreground/60 hover:bg-foreground/5"
+                  }`}
+                >
+                  <button
+                    type="button"
+                    onClick={() => setActiveId(t.id)}
+                    className="max-w-[12rem] truncate"
+                    title={label}
+                  >
+                    {label}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => removeTable(t.id)}
+                    aria-label={`Remove ${label}`}
+                    title="Remove this table"
+                    className="leading-none text-foreground/40 transition-colors hover:text-foreground"
+                  >
+                    &times;
+                  </button>
+                </div>
+              );
+            })}
+          </div>
+
+          {activeTable && (
             <TableCard
-              key={t.id}
-              table={t}
-              index={i}
+              key={activeTable.id}
+              table={activeTable}
+              index={activeIndex}
               headingStyle={headingStyle}
               bodyFont={bodyFont}
-              onChange={(patch) => patchTable(t.id, patch)}
-              onRemove={() => removeTable(t.id)}
+              onChange={(patch) => patchTable(activeTable.id, patch)}
             />
-          ))}
+          )}
         </div>
       )}
     </div>
