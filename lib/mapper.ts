@@ -187,11 +187,13 @@ export function rowsToGroupedSections(
  * value-path MERGE into the same branch (a pivot with only Row fields, no
  * Values), so duplicate paths collapse.
  *
- * Row 0 is the header (skipped). Each segment is the trimmed cell value, blank ->
- * "(blank)" (same policy as the grouped view, so no row is dropped). First-seen
- * order is preserved at every level: a JS array keeps push order, and a per-level
- * `Map` (held in a `WeakMap` keyed by node, discarded after the build) is only a
- * dedup index, never the ordered output.
+ * Row 0 is the header (used to label each level). Each node reads as
+ * `Field name: value` (e.g. `Origin: Brazil`), with the field name taken from
+ * the header of that level's column; a blank value -> "(blank)" and a blank
+ * header drops the prefix (just the value). First-seen order is preserved at
+ * every level: a JS array keeps push order, and a per-level `Map` (held in a
+ * `WeakMap` keyed by node, discarded after the build) is only a dedup index,
+ * never the ordered output. Rows sharing the same labelled path MERGE.
  *
  * Resilient like the other mappers: never throws (`row?.[col]` + `cellToString`).
  * Empty `orderedColumns`, or an empty/header-only grid, yields `[]`.
@@ -201,7 +203,8 @@ export function rowsToPivotTree(
   orderedColumns: number[],
 ): PivotNode[] {
   if (orderedColumns.length === 0) return [];
-  const [, ...dataRows] = rows;
+  const [header = [], ...dataRows] = rows;
+  const headers = header.map(cellToString);
 
   const roots: PivotNode[] = [];
   const rootIndex = new Map<string, PivotNode>();
@@ -213,12 +216,15 @@ export function rowsToPivotTree(
     let siblings = roots;
     let index = rootIndex;
     for (const col of orderedColumns) {
-      const key = cellToString(row?.[col]).trim() || "(blank)";
-      let node = index.get(key);
+      const value = cellToString(row?.[col]).trim() || "(blank)";
+      const name = headers[col]?.trim() ?? "";
+      // Label each level with its field name, e.g. "Fruit Name: Apple".
+      const label = name ? `${name}: ${value}` : value;
+      let node = index.get(label);
       if (!node) {
-        node = { title: key, children: [] };
+        node = { title: label, children: [] };
         siblings.push(node); // first sight -> preserve insertion order
-        index.set(key, node);
+        index.set(label, node);
         childIndex.set(node, new Map());
       }
       siblings = node.children;
