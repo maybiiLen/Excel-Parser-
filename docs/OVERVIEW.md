@@ -28,7 +28,7 @@ The full pipeline is implemented end to end, for multiple tables:
 3. **Render → preview.** The tree is rendered to HTML and shown in each card's live preview (or toggle to inspect the raw Grid as JSON).
 4. **Copy/Download for Word.** Each card writes `text/html` (+ a `text/plain` fallback) to the clipboard or downloads a `.doc`; a combined **Copy all / Download all** exports every table as one document. Pasting into Word yields native headings and bullet lists that fit a Letter page.
 
-**Styling.** Heading appearance (color, fonts, sizes, bold) is shared across all tables. The pivot view adds shared per-nesting-level styles (color/font/size/bold per depth, defaulting to all the same).
+**Styling.** One shared **per-level** panel ("Heading levels") styles every heading across all tables: Level 1 = top headings (section headings + the pivot title), Level 2 = subsections, Levels 3-9 = deeper pivot levels — color/font/size/bold each, defaulting to all the same. In the pivot view only the title is a real Word heading; the nested rows are styled, indented body paragraphs (kept out of Word's outline).
 
 See [ARCHITECTURE.md](./ARCHITECTURE.md) for the data model, view modes, and pipeline, and [ROADMAP.md](./ROADMAP.md) for status.
 

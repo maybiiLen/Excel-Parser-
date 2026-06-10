@@ -29,7 +29,7 @@ PivotNode {              // pivot view only — arbitrary depth
 }
 ```
 
-`Section.body` lets a section carry content directly (used by the grouped and per-item views, which emit one bullet list per section). The A/B/C/D view instead puts bodies on `Subsection`s. The **pivot** view is the exception to the 2-level model: it builds a recursive `PivotNode` tree (no body, no number) of arbitrary depth, rendered as nested Word headings (depth → Heading 1..9). The parser produces a raw **Grid** (`Cell[][]`) which a mapper turns into the tree.
+`Section.body` lets a section carry content directly (used by the grouped and per-item views, which emit one bullet list per section). The A/B/C/D view instead puts bodies on `Subsection`s. The **pivot** view is the exception to the 2-level model: it builds a recursive `PivotNode` tree (no body, no number) of arbitrary depth, rendered as indented body paragraphs with only the optional title as a heading. The parser produces a raw **Grid** (`Cell[][]`) which a mapper turns into the tree.
 
 Multiple pasted tables are held as a `TableState[]` in `components/PasteInput.tsx`; each `TableState` carries its own grid, layout, column choices, pivot order, and title. `components/tableModel.ts` `tableToHtml(t)` runs the per-table map→render pipeline and is the single source used by both the card preview and the combined export.
 
@@ -69,7 +69,7 @@ Mexico
   Spring
     Cantaloupe
 ```
-Output is a `PivotNode[]` of arbitrary depth, rendered as nested headings (depth → Heading 1..9, clamped at 9). Plain (un-numbered); an optional **Section title** becomes a synthetic root node (the title is level 1; groups shift to level 2+). An ordered field picker records selection order (numbered badges + legend + ▲/▼ reorder).
+Output is a `PivotNode[]` of arbitrary depth. Only an optional **Section title** is a real Word heading (rendered as `<h2>` → Heading 1); the nested rows are styled, indented body paragraphs (`<p data-level="N">`, depth clamped at 9) that stay out of Word's navigation outline. With a title the data starts at level 2; without one, level 1 with no heading. An ordered field picker records selection order (numbered badges + legend + ▲/▼ reorder).
 
 ### 4. A/B/C/D sections — `rowsToTree` (original position convention)
 
@@ -94,7 +94,7 @@ clipboard (text/html, else text/plain)
   -> tableToHtml(t):
        grouped|list -> mapper -> wrapInNumberedSection -> renderTree           -> HTML fragment
        sections     -> rowsToTree -> renderTree                                -> HTML fragment
-       pivot        -> rowsToPivotTree (+ optional title root) -> renderPivotTree -> HTML fragment
+       pivot        -> rowsToPivotTree -> renderPivotTree(tree, title?)            -> HTML fragment
   -> live preview (RenderedPreview, dangerouslySetInnerHTML; scoped h2/h3 + [data-level] CSS)
   -> buildWordHtml + htmlToPlainText -> navigator.clipboard.write / .doc blob  -> paste/open in Word
 ```
@@ -113,10 +113,10 @@ Per-table Copy/Download run `tableToHtml` for that one table; combined **Copy al
 ## Clipboard output
 
 `lib/clipboard.ts` wraps the rendered fragment for Word and applies the heading styling:
-- `buildWordHtml(fragment, heading, bodyFont)` → an Office-namespaced `<html>` with a `<style>` (`@page`, body font, heading rules) and `<body>{rewritten fragment}`. It rewrites `<h2>`→`<p class="MsoHeading1">`, `<h3>`→`MsoHeading2`, and pivot `<p data-level="N">`→`MsoPiv1..9`. Each Mso* class carries `mso-style-name:"heading N"` + `mso-outline-level:N` (so Word treats them as native Heading 1..9 in the outline) plus the look from `HeadingStyle` — color/font/size/bold, and for pivot a per-level `LevelStyle` + a growing left indent. The browser writes the Windows CF_HTML header automatically.
+- `buildWordHtml(fragment, heading, bodyFont)` → an Office-namespaced `<html>` with a `<style>` (`@page`, body font, heading rules) and `<body>{rewritten fragment}`. It rewrites `<h2>`→`<p class="MsoHeading1">`, `<h3>`→`MsoHeading2` (real Word headings: `mso-style-name:"heading N"` + `mso-outline-level:N`, so they appear in the outline), and pivot `<p data-level="N">`→`MsoPiv1..9` (**non-heading** styled paragraphs — no `mso-style-name`/`mso-outline-level`, just the per-level look + a growing left indent, so they stay out of the outline). Every look comes from `heading.levels[N-1]`. The browser writes the Windows CF_HTML header automatically.
 - `htmlToPlainText(fragment)` → readable plain-text fallback for the `text/plain` flavor.
 
-`HeadingStyle` (color, font, h1/h2 size, bold, `levels: LevelStyle[]`) is built once in `PasteInput` and shared by every table; `LevelStyle[]` holds the shared per-pivot-level look. The card's `copyForWord()` / parent's `copyAll()` write a `ClipboardItem` with both flavors via `navigator.clipboard.write`; `downloadForWord()` / `downloadAll()` save the same HTML as a `.doc`.
+`HeadingStyle = { levels: LevelStyle[] }` is the single styling source, built once in `PasteInput` and shared by every table — Level 1 styles `MsoHeading1` (h2 + the pivot title), Level 2 styles `MsoHeading2` (h3), Levels 3-9 the deeper pivot rows. The card's `copyForWord()` / parent's `copyAll()` write a `ClipboardItem` with both flavors via `navigator.clipboard.write`; `downloadForWord()` / `downloadAll()` save the same HTML as a `.doc`.
 
 ## Pipeline diagram
 

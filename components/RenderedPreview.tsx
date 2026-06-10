@@ -41,28 +41,21 @@ export function RenderedPreview({
     );
   }
 
-  const h = headingStyle;
-  const weight = h.bold ? 700 : 400;
-  // Pivot (nested-rows) levels 1-9: each level's own color/font/size/bold, plus a
-  // growing left indent. Mirrors the MsoPiv* rules in buildWordHtml so the
-  // preview matches the Word output. Per-level look comes from h.levels[n-1].
-  const levelCss = Array.from({ length: 9 }, (_, i) => {
-    const n = i + 1;
-    const lv = h.levels[i] ?? {
-      color: h.color,
-      font: h.font,
-      size: n === 1 ? h.h1Size : h.h2Size,
-      bold: h.bold,
-    };
-    const lvWeight = lv.bold ? 700 : 400;
-    const indent = ((n - 1) * 0.2).toFixed(1);
-    return `.ws-preview [data-level="${n}"]{color:${lv.color};font-family:'${lv.font}';font-size:${lv.size}pt;font-weight:${lvWeight};margin-left:${indent}in}`;
-  }).join("");
+  // Every heading's look comes from headingStyle.levels (the single style
+  // source). Level 1 (index 0) styles h2 + pivot level 1; level 2 styles h3 +
+  // pivot level 2; levels 3-9 style deeper pivot levels. Indent applies to the
+  // pivot [data-level] rules only.
+  const FALLBACK = { color: "#2F5496", font: "Calibri Light", size: 13, bold: false };
+  const rule = (sel: string, i: number, indentIn: string) => {
+    const lv = headingStyle.levels[i] ?? FALLBACK;
+    const margin = indentIn ? `;margin-left:${indentIn}in` : "";
+    return `.ws-preview ${sel}{color:${lv.color};font-family:'${lv.font}';font-size:${lv.size}pt;font-weight:${lv.bold ? 700 : 400}${margin}}`;
+  };
+  const levelCss = Array.from({ length: 9 }, (_, i) =>
+    rule(`[data-level="${i + 1}"]`, i, ((i) * 0.2).toFixed(1)),
+  ).join("");
   // Body text inherits the container font; headings override it below.
-  const css =
-    `.ws-preview h2{color:${h.color};font-family:'${h.font}';font-size:${h.h1Size}pt;font-weight:${weight}}` +
-    `.ws-preview h3{color:${h.color};font-family:'${h.font}';font-size:${h.h2Size}pt;font-weight:${weight}}` +
-    levelCss;
+  const css = rule("h2", 0, "") + rule("h3", 1, "") + levelCss;
 
   return (
     <div

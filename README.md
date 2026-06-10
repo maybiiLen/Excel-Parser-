@@ -16,14 +16,14 @@ Each table picks its own layout:
 
 - **Grouped by field** (default) — group rows by a chosen field; each value is a heading, members are bullets.
 - **Fields as bullets** — one section per row; chosen fields as `Field: value` bullets.
-- **Pivot (nested rows)** — Excel "Rows area": pick fields in order; rows nest by that order (shared paths merge). Optional plain title on top; shared per-level styling (color/font/size per depth).
+- **Pivot (nested rows)** — Excel "Rows area": pick fields in order; rows nest by that order (shared paths merge). An optional title is the only Word heading; the nested rows are indented body text (they don't clutter Word's outline).
 - **A/B/C/D sections** — the original position convention (A = section, B = subsection, C = body, D = type).
 
 A field checklist controls which columns show, and a **View JSON** toggle inspects the raw parsed grid. Grouped/per-item tables can be slotted into a document under a numbered, titled section (e.g. `5 Fruit Database` → 5.1, 5.2, …).
 
 ## Multiple tables
 
-Paste table after table — each becomes a card in a horizontal **tab strip** (one edited at a time, cap 100). Heading appearance is shared across all tables; each table keeps its own layout, columns, and title. Export per-table (**Copy/Download for Word**) or everything at once (**Copy all / Download all**).
+Paste table after table — each becomes a card in a horizontal **tab strip** (one edited at a time, cap 100). One shared **per-level** styling panel (Level 1 = top headings, Level 2 = subsections, …) applies to every table; each table keeps its own layout, columns, and title. Export per-table (**Copy/Download for Word**) or everything at once (**Copy all / Download all**).
 
 ## Stack
 

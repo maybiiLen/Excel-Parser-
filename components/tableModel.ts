@@ -93,14 +93,13 @@ export function fieldColumnsOf(t: TableState): number[] {
  */
 export function tableToHtml(t: TableState): string {
   // Pivot: plain, un-numbered nested rows (not wrapped in a numbered section like
-  // the grouped/per-item views). An optional Section title becomes a synthetic
-  // root node -> the title is level 1 and the groups nest under it at level 2+.
+  // the grouped/per-item views). An optional Section title is the ONLY heading
+  // (rendered as <h2>); the nested rows are styled body paragraphs beneath it.
   // Guard the empty tree first so a title never renders over nothing.
   if (t.layout === "pivot") {
     const tree = rowsToPivotTree(t.grid, t.pivotOrder);
     if (tree.length === 0) return "";
-    const label = t.sectionTitle.trim();
-    return renderPivotTree(label ? [{ title: label, children: tree }] : tree);
+    return renderPivotTree(tree, t.sectionTitle.trim() || undefined);
   }
   const fieldColumns = fieldColumnsOf(t);
   const num = sectionNumberOf(t);

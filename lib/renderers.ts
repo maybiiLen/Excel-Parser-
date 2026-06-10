@@ -84,21 +84,24 @@ export function renderTree(sections: Section[]): string {
 /**
  * Render a pivot (nested-rows) tree as one HTML document fragment.
  *
- * Each node becomes one plain (un-numbered) heading paragraph whose nesting
- * depth is carried in a `data-level` ATTRIBUTE rather than the tag name: HTML
+ * Only the optional `title` is a real Word heading: it is emitted as `<h2>` (->
+ * MsoHeading1), the single outline entry for the section. The nested data nodes
+ * are emitted as `<p class="ws-lvl" data-level="N">` -- styled, indented BODY
+ * paragraphs (`buildWordHtml` maps them to non-heading `MsoPiv{N}` classes), so
+ * they do NOT clutter Word's navigation outline. When a title is present the
+ * data starts at level 2 (the title occupies level 1); otherwise it starts at
+ * level 1 and there is no heading at all.
+ *
+ * The nesting depth rides in a `data-level` ATTRIBUTE, not the tag name (HTML
  * only has h1-h6, and a class like `pl-3` would collide with Tailwind padding
- * utilities. `buildWordHtml` rewrites `data-level="N"` to a Word `MsoPiv{N}`
- * heading style and `RenderedPreview` styles `[data-level="N"]`, so the one
- * attribute drives both render targets. Level is 1-based and clamped at 9
- * (Word's `mso-outline-level` maximum); deeper nodes still render at level 9.
+ * utilities); `RenderedPreview` styles `[data-level="N"]`. Level is 1-based and
+ * clamped at 9; deeper nodes still render at level 9.
  *
- * Only user-derived titles are escaped; the `class`/`data-level` values are
- * machine constants (a single digit), so there is no attribute-injection
- * surface. Returns a bare fragment, like `renderTree`.
- *
- * Pure: builds a local array and returns its join; the input is never mutated.
+ * Only user-derived text is escaped; the `class`/`data-level` values are machine
+ * constants (a single digit), so there is no attribute-injection surface.
+ * Returns a bare fragment, like `renderTree`. Pure: the input is never mutated.
  */
-export function renderPivotTree(nodes: PivotNode[]): string {
+export function renderPivotTree(nodes: PivotNode[], title?: string): string {
   const blocks: string[] = [];
   const walk = (list: PivotNode[], level: number) => {
     const lvl = Math.min(level, 9);
@@ -109,6 +112,11 @@ export function renderPivotTree(nodes: PivotNode[]): string {
       if (node.children.length > 0) walk(node.children, level + 1);
     }
   };
-  walk(nodes, 1);
+  if (title) {
+    blocks.push(`<h2>${escapeHtml(title)}</h2>`);
+    walk(nodes, 2); // title is level 1; data nests beneath it
+  } else {
+    walk(nodes, 1);
+  }
   return blocks.join("\n");
 }

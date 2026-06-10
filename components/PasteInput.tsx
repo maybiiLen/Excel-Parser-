@@ -24,6 +24,16 @@ const HEADING_FONTS = [
 
 const MAX_TABLES = 100;
 
+// One row of the per-level editor (size kept as a string so it can be cleared).
+type LevelInput = { color: string; font: string; sizeInput: string; bold: boolean };
+// Default look for an untouched level: all levels start identical.
+const DEFAULT_LEVEL: LevelInput = {
+  color: "#2F5496",
+  font: "Calibri Light",
+  sizeInput: "13",
+  bold: false,
+};
+
 export function PasteInput() {
   // Each paste appends one table; tables stack down the page in paste order.
   const [tables, setTables] = useState<TableState[]>([]);
@@ -39,61 +49,39 @@ export function PasteInput() {
   // table is removed (a ref, so bumping it never triggers a render).
   const idRef = useRef(0);
 
-  // Heading appearance, shared across every table so a "keep source" paste
-  // matches the target document. Sticky (template metadata), even across "Clear
-  // all". Sizes held as strings so they can be cleared.
-  const [headingColor, setHeadingColor] = useState<string>("#2F5496");
-  const [headingFont, setHeadingFont] = useState<string>("Calibri Light");
-  const [h1SizeInput, setH1SizeInput] = useState<string>("16");
-  const [h2SizeInput, setH2SizeInput] = useState<string>("13");
-  const [headingBold, setHeadingBold] = useState<boolean>(false);
-  // Body font is separate (default Calibri) so unstyled body text doesn't fall
-  // back to Times New Roman on a Word paste; headings keep their own font.
+  // Body font (default Calibri) so unstyled body text doesn't fall back to Times
+  // New Roman on a Word paste. Separate from the per-level heading look.
   const [bodyFont, setBodyFont] = useState<string>("Calibri");
-  // Per-pivot-level overrides, shared across all pivot tables. SPARSE: an index
-  // is written only when that level is edited; untouched levels fall back to the
-  // shared panel + H2 size below, so they all start identical ("Reset levels"
-  // clears this back to []). Sizes held as strings so they can be cleared.
-  type LevelInput = { color: string; font: string; sizeInput: string; bold: boolean };
+  // The single heading-style source, shared across every table: per-level look
+  // (Level 1 = every top heading, Level 2 = subsections, Levels 3-9 = deeper
+  // pivot levels). SPARSE -- an index is written only when that level is edited;
+  // untouched levels use DEFAULT_LEVEL (so they all start identical; "Reset
+  // levels" clears this back to []). Sticky, even across "Clear all".
   const [levelStyles, setLevelStyles] = useState<LevelInput[]>([]);
   const headingStyle = useMemo<HeadingStyle>(() => {
     const clampPt = (s: string, fallback: number) => {
       const n = parseInt(s, 10);
       return Number.isFinite(n) && n >= 1 && n <= 72 ? n : fallback;
     };
-    // Full 9-entry per-level look: an edited level wins; otherwise inherit the
-    // shared color/font/bold at the shared H2 size (uniform default).
+    // Full 9-entry per-level look: an edited level wins; otherwise DEFAULT_LEVEL.
     const levels: LevelStyle[] = Array.from({ length: 9 }, (_, i) => {
       const ls = levelStyles[i];
       return {
-        color: ls?.color ?? headingColor,
-        font: ls?.font ?? headingFont,
-        size: clampPt(ls?.sizeInput ?? h2SizeInput, 13),
-        bold: ls?.bold ?? headingBold,
+        color: ls?.color ?? DEFAULT_LEVEL.color,
+        font: ls?.font ?? DEFAULT_LEVEL.font,
+        size: clampPt(ls?.sizeInput ?? DEFAULT_LEVEL.sizeInput, 13),
+        bold: ls?.bold ?? DEFAULT_LEVEL.bold,
       };
     });
-    return {
-      color: headingColor,
-      font: headingFont,
-      h1Size: clampPt(h1SizeInput, 16),
-      h2Size: clampPt(h2SizeInput, 13),
-      bold: headingBold,
-      levels,
-    };
-  }, [headingColor, headingFont, h1SizeInput, h2SizeInput, headingBold, levelStyles]);
+    return { levels };
+  }, [levelStyles]);
 
-  // Edit one pivot level: snapshot the current base into that index if it's not
-  // set yet, then apply the patch. Keeps the array otherwise sparse.
+  // Edit one level: snapshot DEFAULT_LEVEL into that index if it's not set yet,
+  // then apply the patch. Keeps the array otherwise sparse.
   function setLevel(i: number, patch: Partial<LevelInput>) {
     setLevelStyles((prev) => {
       const next = [...prev];
-      const base: LevelInput = {
-        color: headingColor,
-        font: headingFont,
-        sizeInput: h2SizeInput,
-        bold: headingBold,
-      };
-      next[i] = { ...(next[i] ?? base), ...patch };
+      next[i] = { ...(next[i] ?? DEFAULT_LEVEL), ...patch };
       return next;
     });
   }
@@ -214,17 +202,18 @@ export function PasteInput() {
     ? tables.findIndex((t) => t.id === activeTable.id)
     : -1;
 
-  // Per-level editor only matters when a pivot table exists. Show one row per
-  // level actually in use: deepest pivot's field count, +1 if it has a title
-  // (the title is the synthetic level 1), clamped to Word's 9-level max.
-  const anyPivot = tables.some((t) => t.layout === "pivot");
+  // Show one level row per level actually in use across all tables: a pivot uses
+  // its field count (+1 for a title, which is level 1); every other view uses 2
+  // (section + subsection). Clamped to Word's 9-level max.
   const maxDepth = Math.min(
     9,
     Math.max(
       1,
-      ...tables
-        .filter((t) => t.layout === "pivot")
-        .map((t) => t.pivotOrder.length + (t.sectionTitle.trim() ? 1 : 0)),
+      ...tables.map((t) =>
+        t.layout === "pivot"
+          ? t.pivotOrder.length + (t.sectionTitle.trim() ? 1 : 0)
+          : 2,
+      ),
     ),
   );
 
@@ -316,104 +305,40 @@ export function PasteInput() {
             (Word&nbsp;→&nbsp;Word keeps formatting).
           </p>
 
-          <div className="flex flex-wrap items-center gap-x-4 gap-y-2 rounded-lg border border-foreground/15 bg-foreground/[0.02] p-3 text-sm text-foreground/70">
-            <span className="text-foreground/60">
-              Heading style{" "}
-              <span className="text-foreground/40">(applies to all tables)</span>:
-            </span>
-            <label className="flex items-center gap-1.5">
-              Color
-              <input
-                type="color"
-                value={headingColor}
-                onChange={(e) => setHeadingColor(e.target.value)}
-                aria-label="Heading color"
-                className="h-6 w-8 cursor-pointer rounded border border-foreground/20"
-              />
-            </label>
-            <label className="flex items-center gap-1.5">
-              Heading font
-              <select
-                value={headingFont}
-                onChange={(e) => setHeadingFont(e.target.value)}
-                className="rounded-md border border-foreground/20 px-2 py-1 text-sm text-foreground"
-              >
-                {HEADING_FONTS.map((f) => (
-                  <option key={f} value={f}>
-                    {f}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label className="flex items-center gap-1.5">
-              Body font
-              <select
-                value={bodyFont}
-                onChange={(e) => setBodyFont(e.target.value)}
-                className="rounded-md border border-foreground/20 px-2 py-1 text-sm text-foreground"
-              >
-                {HEADING_FONTS.map((f) => (
-                  <option key={f} value={f}>
-                    {f}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label className="flex items-center gap-1.5">
-              H1 pt
-              <input
-                type="text"
-                inputMode="numeric"
-                value={h1SizeInput}
-                onChange={(e) =>
-                  setH1SizeInput(e.target.value.replace(/[^0-9]/g, ""))
-                }
-                aria-label="Heading 1 size in points"
-                className="w-12 rounded-md border border-foreground/20 px-2 py-1 text-sm text-foreground"
-              />
-            </label>
-            <label className="flex items-center gap-1.5">
-              H2 pt
-              <input
-                type="text"
-                inputMode="numeric"
-                value={h2SizeInput}
-                onChange={(e) =>
-                  setH2SizeInput(e.target.value.replace(/[^0-9]/g, ""))
-                }
-                aria-label="Heading 2 size in points"
-                className="w-12 rounded-md border border-foreground/20 px-2 py-1 text-sm text-foreground"
-              />
-            </label>
-            <label className="flex items-center gap-1.5">
-              <input
-                type="checkbox"
-                checked={headingBold}
-                onChange={(e) => setHeadingBold(e.target.checked)}
-              />
-              Bold
-            </label>
-          </div>
-
-          {anyPivot && (
-            <div className="flex flex-col gap-2 rounded-lg border border-foreground/15 bg-foreground/[0.02] p-3 text-sm text-foreground/70">
-              <div className="flex items-center justify-between gap-2">
-                <span className="text-foreground/60">
-                  Pivot level styles{" "}
-                  <span className="text-foreground/40">
-                    (each nested level; defaults to all the same)
-                  </span>
+          <div className="flex flex-col gap-2 rounded-lg border border-foreground/15 bg-foreground/[0.02] p-3 text-sm text-foreground/70">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <span className="text-foreground/60">
+                Heading levels{" "}
+                <span className="text-foreground/40">
+                  (Level 1 = top heading; applies to all tables)
                 </span>
+              </span>
+              <div className="flex items-center gap-3">
+                <label className="flex items-center gap-1.5">
+                  Body font
+                  <select
+                    value={bodyFont}
+                    onChange={(e) => setBodyFont(e.target.value)}
+                    className="rounded-md border border-foreground/20 px-2 py-1 text-sm text-foreground"
+                  >
+                    {HEADING_FONTS.map((f) => (
+                      <option key={f} value={f}>
+                        {f}
+                      </option>
+                    ))}
+                  </select>
+                </label>
                 <button
                   type="button"
                   onClick={() => setLevelStyles([])}
                   disabled={levelStyles.length === 0}
-                  title="Reset every level back to the shared heading style"
+                  title="Reset every level to the default look"
                   className="rounded-md border border-foreground/20 px-2 py-1 text-xs font-medium transition-colors hover:bg-foreground/5 disabled:cursor-not-allowed disabled:opacity-50"
                 >
                   Reset levels
                 </button>
               </div>
+            </div>
               {Array.from({ length: maxDepth }, (_, i) => {
                 const lv = headingStyle.levels[i];
                 return (
@@ -452,7 +377,7 @@ export function PasteInput() {
                       <input
                         type="text"
                         inputMode="numeric"
-                        value={levelStyles[i]?.sizeInput ?? h2SizeInput}
+                        value={levelStyles[i]?.sizeInput ?? DEFAULT_LEVEL.sizeInput}
                         onChange={(e) =>
                           setLevel(i, {
                             sizeInput: e.target.value.replace(/[^0-9]/g, ""),
@@ -474,7 +399,6 @@ export function PasteInput() {
                 );
               })}
             </div>
-          )}
 
           <div className="flex items-center gap-1.5 overflow-x-auto pb-1">
             {tables.map((t, i) => {

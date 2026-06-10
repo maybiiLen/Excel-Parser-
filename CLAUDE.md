@@ -36,8 +36,8 @@ Pipeline (per table): paste → `parseClipboard` (Grid) → a mapper (chosen by 
 - `lib/parser.ts` — SheetJS clipboard → Grid (`parseClipboard`)
 - `lib/mapper.ts` — Grid → tree; `rowsToTree` (A/B/C/D), `rowsToAttributeSections` (per-item), `rowsToGroupedSections` (group-by), `rowsToPivotTree` (ordered nested group-by → `PivotNode[]`)
 - `lib/numbering.ts` — `wrapInNumberedSection`: wraps the grouped/per-item output under one user-numbered, titled section (children numbered N.1, N.2, …)
-- `lib/renderers.ts` — `renderTree` (Section tree → `<h2>/<h3>` fragment) + `renderBody`; `renderPivotTree` (PivotNode tree → `<p data-level="N">` fragment, depth clamped at 9); escapes user text, omits blank numbers
-- `lib/clipboard.ts` — `HeadingStyle`/`LevelStyle` types; `buildWordHtml` (Word doc wrapper: `<h2>/<h3>`→`MsoHeading1/2`, pivot `data-level`→`MsoPiv1..9`, per-level look + indent) + `htmlToPlainText`
+- `lib/renderers.ts` — `renderTree` (Section tree → `<h2>/<h3>` fragment) + `renderBody`; `renderPivotTree(nodes, title?)` (optional title → one `<h2>`; PivotNode tree → `<p data-level="N">` body paragraphs, depth clamped at 9); escapes user text, omits blank numbers
+- `lib/clipboard.ts` — `HeadingStyle`/`LevelStyle` types; `buildWordHtml` (Word doc wrapper: `<h2>/<h3>`→`MsoHeading1/2` headings, pivot `data-level`→`MsoPiv1..9` **non-heading** styled paragraphs, all looks from `levels`) + `htmlToPlainText`
 - `docs/` — OVERVIEW, ARCHITECTURE, ROADMAP
 
 ## Data Model
@@ -45,19 +45,21 @@ The product is a tree, not a flat table. The four non-pivot views build a 2-leve
 - `Section { number, title, children: Subsection[], body? }` — `body?` carries content directly under a section heading (used by the per-item and grouped views)
 - `Subsection { number, title, body: Body }`
 - `Body = { type: "text", content } | { type: "bullets", items } | { type: "table", rows }`
-- `PivotNode { title, children: PivotNode[] }` — recursive, no body/number; a leaf has `children: []`. Rendered as nested Word headings (depth → Heading 1..9). The pivot's optional title is a synthetic root `PivotNode`.
+- `PivotNode { title, children: PivotNode[] }` — recursive, no body/number; a leaf has `children: []`. Rendered as nested, indented body paragraphs (`<p data-level="N">`); the pivot's optional title is passed separately and rendered as the single `<h2>` heading.
 
 ## View modes
 Each table picks its own layout (per-table; default **Grouped by field**):
 - **Grouped by field** (`rowsToGroupedSections`) — row 0 is headers; rows are grouped by a chosen field (each distinct value → a heading), members listed as bullets (a label column + optional checked fields in parens).
 - **Fields as bullets** (`rowsToAttributeSections`) — header row + one row per item; each row → a section titled by a chosen column, other selected fields as "Field: value" bullets.
-- **Pivot (nested rows)** (`rowsToPivotTree`) — Excel "Rows area": pick an ordered list of fields; rows nest by that order (field 1 = outermost), shared value-paths merge. An ordered field picker records selection order (numbered badges + legend + ▲/▼ reorder). Plain (un-numbered); an optional **Section title** becomes the top heading (synthetic root; groups shift one level deeper).
+- **Pivot (nested rows)** (`rowsToPivotTree`) — Excel "Rows area": pick an ordered list of fields; rows nest by that order (field 1 = outermost), shared value-paths merge. An ordered field picker records selection order (numbered badges + legend + ▲/▼ reorder). Plain (un-numbered). An optional **Section title** is the ONLY Word heading (rendered as `<h2>`); the nested rows are styled, indented body paragraphs beneath it (not in Word's outline). With a title, data starts at level 2; without one, it starts at level 1 and there's no heading.
 - **A/B/C/D sections** (`rowsToTree`, the original position convention) — Column A filled = section title; A blank = subsection of the section above; B = subsection title; C = body content; D = body type flag ("text" | "bullet" | "table").
 
 The grouped/per-item views are header-aware and share a field checklist; they wrap their items under a chosen **Section #** + **Section title** (children numbered N.1, N.2, …). A/B/C/D stays un-numbered.
 
 ## Styling
-Heading appearance is **shared** across all tables (one panel: heading color, heading font, body font, H1 pt, H2 pt, bold) → `HeadingStyle`. It drives `<h2>/<h3>` (Word Heading 1/2) for the non-pivot views. The **pivot** view additionally has shared **per-nesting-level styles** (`LevelStyle[]`, one row per level in use): color/font/size/bold per depth, defaulting to all the same (distinguished by indent), with a "Reset levels" button. Per-level styles feed the `MsoPiv1..9` Word classes and the preview `[data-level]` CSS. All style inputs are form-controlled (hex color, allow-listed font, clamped pt), so no free user text lands in a `style`/`class` attribute.
+One **shared per-level** styling panel ("Heading levels") drives every heading across all tables — `HeadingStyle = { levels: LevelStyle[] }`. Each level row sets color/font/size/bold; defaults are all the same (distinguished by indent), with a "Reset levels" button. Mapping: **Level 1** styles every top heading (`<h2>`/`MsoHeading1` — grouped/list/sections section headings AND the pivot title); **Level 2** styles subsections (`<h3>`/`MsoHeading2` AND pivot data level 2); **Levels 3-9** style deeper pivot levels. The panel shows one row per level actually in use (non-pivot tables use 2; a pivot uses its depth + 1 for a title). A single **Body font** control sits beside it. All style inputs are form-controlled (hex color, allow-listed font, clamped pt), so no free user text lands in a `style`/`class` attribute.
+
+**Pivot headings:** in the pivot view, ONLY the title is a real Word heading (`<h2>` → `MsoHeading1`, the one outline entry). The nested rows are emitted as `MsoPiv1..9` paragraphs that deliberately carry **no** `mso-style-name`/`mso-outline-level` — they're styled, indented body text, so they don't flood Word's navigation outline.
 
 ## Current status
 Full pipeline implemented for multiple tables: paste (append) → parse → map (4 layouts) → render → live preview → per-table **Copy/Download for Word** + combined **Copy all / Download all** (`text/html` + `text/plain`; `.doc` via an HTML-doc blob). Tables are managed in a tab strip (cap 100). A wide-table width strategy (transpose/split) is NOT wired in; true `.docx` generation is out of scope. The active views emit headings + bullet lists / nested headings (narrow, page-fitting); only the A/B/C/D view can emit a raw `table` body (via the D flag), which is not yet width-managed.

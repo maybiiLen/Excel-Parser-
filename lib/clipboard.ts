@@ -38,9 +38,9 @@
  * are the source formatting a keep-source paste preserves.
  */
 /**
- * Per-nesting-level look for the pivot (nested-rows) view -- one entry per depth
- * (index 0 = level 1). Shared across all pivot tables; defaults are all the same
- * so nesting reads by indent alone (Excel-like) until the user diverges a level.
+ * How one heading level should look -- one entry per depth (index 0 = level 1).
+ * Shared across all tables; defaults are all the same until the user diverges a
+ * level.
  */
 export type LevelStyle = {
   color: string; // hex
@@ -49,14 +49,23 @@ export type LevelStyle = {
   bold: boolean;
 };
 
+/**
+ * The single styling source for every heading, shared across all tables. Index
+ * 0 = level 1 styles every top heading (`<h2>`/MsoHeading1 for the
+ * grouped/list/sections views AND pivot level 1); index 1 = level 2 styles
+ * subsections (`<h3>`/MsoHeading2 AND pivot level 2); indices 2-8 style the
+ * deeper pivot levels (MsoPiv3..9).
+ */
 export type HeadingStyle = {
-  color: string; // hex, e.g. "#2F5496"
-  font: string; // font-family name, e.g. "Calibri Light"
-  h1Size: number; // pt, wrapper / Heading 1 (non-pivot views)
-  h2Size: number; // pt, children / Heading 2 (non-pivot views)
-  bold: boolean;
-  /** Per-pivot-level look, index 0 = level 1; drives the MsoPiv* rules below. */
   levels: LevelStyle[];
+};
+
+// Guard if a level entry is ever absent (callers pass a full 9-entry array).
+const FALLBACK_LEVEL: LevelStyle = {
+  color: "#2F5496",
+  font: "Calibri Light",
+  size: 13,
+  bold: false,
 };
 
 export function buildWordHtml(
@@ -73,26 +82,19 @@ export function buildWordHtml(
       /<p class="ws-lvl" data-level="([1-9])">([\s\S]*?)<\/p>/g,
       '<p class="MsoPiv$1">$2</p>',
     );
-  const weight = heading.bold ? "bold" : "normal";
-  const look = (size: number) =>
-    `color:${heading.color};font-family:"${heading.font}";font-size:${size}pt;font-weight:${weight}`;
-  // Pivot heading levels 1-9. Their own class (not MsoHeading*) so the per-level
-  // look + indent never leak onto grouped/list subsections, which reuse
-  // MsoHeading2. Each still maps to Word's built-in "heading N" via
-  // mso-style-name, so the document outline is correct; the left indent is direct
-  // formatting kept on a keep-source paste. Each level's color/font/size/bold
-  // comes from heading.levels[n-1] (falls back to the base look); indent grows.
+  // Every heading's look comes from heading.levels (the single style source).
+  const lookOf = (lv: LevelStyle) =>
+    `color:${lv.color};font-family:"${lv.font}";font-size:${lv.size}pt;font-weight:${lv.bold ? "bold" : "normal"}`;
+  const lvl = (i: number) => heading.levels[i] ?? FALLBACK_LEVEL;
+  // Pivot levels 1-9. Deliberately NOT Word headings: they carry no
+  // mso-style-name / mso-outline-level, so the nested rows are plain styled
+  // BODY paragraphs and don't flood Word's navigation outline (only the pivot
+  // title -- emitted as <h2> -> MsoHeading1 -- is a heading). Look comes from
+  // heading.levels[n-1]; the growing left indent shows the nesting.
   const pivotRules = Array.from({ length: 9 }, (_, i) => {
     const n = i + 1;
-    const lv = heading.levels[i] ?? {
-      color: heading.color,
-      font: heading.font,
-      size: n === 1 ? heading.h1Size : heading.h2Size,
-      bold: heading.bold,
-    };
-    const lvLook = `color:${lv.color};font-family:"${lv.font}";font-size:${lv.size}pt;font-weight:${lv.bold ? "bold" : "normal"}`;
     const indent = ((n - 1) * 0.2).toFixed(1);
-    return `p.MsoPiv${n}{mso-style-name:"heading ${n}";mso-outline-level:${n};${lvLook};margin-left:${indent}in}`;
+    return `p.MsoPiv${n}{${lookOf(lvl(i))};margin-left:${indent}in}`;
   }).join("");
   return (
     `<html xmlns:o="urn:schemas-microsoft-com:office:office" ` +
@@ -104,8 +106,8 @@ export function buildWordHtml(
     // Set a body font so Word doesn't fall back to Times New Roman for unstyled
     // HTML body text. Headings override this with their own font below.
     `body{overflow-wrap:break-word;font-family:"${bodyFont}"}` +
-    `p.MsoHeading1{mso-style-name:"heading 1";mso-outline-level:1;${look(heading.h1Size)}}` +
-    `p.MsoHeading2{mso-style-name:"heading 2";mso-outline-level:2;${look(heading.h2Size)}}` +
+    `p.MsoHeading1{mso-style-name:"heading 1";mso-outline-level:1;${lookOf(lvl(0))}}` +
+    `p.MsoHeading2{mso-style-name:"heading 2";mso-outline-level:2;${lookOf(lvl(1))}}` +
     pivotRules +
     `</style>` +
     `</head><body>${body}</body></html>`

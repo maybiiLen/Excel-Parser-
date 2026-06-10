@@ -25,8 +25,8 @@ The original MVP build order, with current status. The core pipeline (paste → 
 | **Pivot (nested rows) view** | `rowsToPivotTree` → `PivotNode[]` — ordered-field nested group-by (Excel "Rows area"); ordered picker w/ badges + ▲/▼; optional plain title (synthetic root) | Done |
 | **View selector + JSON toggle** | Per-table layout select (Grouped / Fields-as-bullets / Pivot / A/B/C/D) + rendered-vs-JSON toggle | Done |
 | **Multiple tables + tab strip** | Paste appends a table; cards managed in a horizontal tab strip (one edited at a time, cap 100) | Done |
-| **Shared heading styling** | One panel (color, heading/body font, H1/H2 pt, bold) → `HeadingStyle`, applied to every table; headings emitted as Word `MsoHeading`/`MsoPiv` styles | Done |
-| **Per-pivot-level styling** | Shared `LevelStyle[]` — color/font/size/bold per nesting depth, defaulting to all the same; "Reset levels" | Done |
+| **Shared per-level styling** | One "Heading levels" panel → `HeadingStyle = { levels: LevelStyle[] }`, applied to every table: Level 1 = top headings, Level 2 = subsections, Levels 3-9 = deeper pivot rows (color/font/size/bold each, default all the same; "Reset levels") + one Body font | Done |
+| **Pivot = one heading + body rows** | In the pivot view only the title is a Word heading (`<h2>`); nested rows are styled, indented `MsoPiv` body paragraphs (no outline level), so they don't flood Word's navigation outline | Done |
 | **Copy + Download for Word** | Per-table clipboard write and `.doc` download, plus combined **Copy all / Download all** | Done |
 
 ## Possible next steps
