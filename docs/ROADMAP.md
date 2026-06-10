@@ -18,16 +18,20 @@ The original MVP build order, with current status. The core pipeline (paste → 
 
 ## Added beyond the original plan
 
-The product grew two header-aware view modes (default is the grouped one):
-
 | Step | What | Status |
 | ---- | ---- | ------ |
 | **Per-item view** | `rowsToAttributeSections` — one section per row, chosen fields as `Field: value` bullets, with a field checklist | Done |
-| **Grouped (pivot-style) view** | `rowsToGroupedSections` — group rows by a chosen field; members as bullets (label + optional fields) | Done |
-| **View selector** | Switch between Grouped / Fields-as-bullets / A/B/C/D, plus a rendered-vs-JSON toggle | Done |
+| **Grouped view** (default) | `rowsToGroupedSections` — group rows by a chosen field; members as bullets (label + optional fields) | Done |
+| **Pivot (nested rows) view** | `rowsToPivotTree` → `PivotNode[]` — ordered-field nested group-by (Excel "Rows area"); ordered picker w/ badges + ▲/▼; optional plain title (synthetic root) | Done |
+| **View selector + JSON toggle** | Per-table layout select (Grouped / Fields-as-bullets / Pivot / A/B/C/D) + rendered-vs-JSON toggle | Done |
+| **Multiple tables + tab strip** | Paste appends a table; cards managed in a horizontal tab strip (one edited at a time, cap 100) | Done |
+| **Shared heading styling** | One panel (color, heading/body font, H1/H2 pt, bold) → `HeadingStyle`, applied to every table; headings emitted as Word `MsoHeading`/`MsoPiv` styles | Done |
+| **Per-pivot-level styling** | Shared `LevelStyle[]` — color/font/size/bold per nesting depth, defaulting to all the same; "Reset levels" | Done |
+| **Copy + Download for Word** | Per-table clipboard write and `.doc` download, plus combined **Copy all / Download all** | Done |
 
 ## Possible next steps
 
-- **Pivot aggregation** — counts/sums per group (e.g. `Brazil (3)` or a totals summary), building on the grouped view.
+- **Pivot aggregation** — counts/sums per group (e.g. `Brazil (3)` or a totals summary).
+- **Per-table heading styling** — currently styling is global; per-table would need per-instance class scoping or inline styles.
 - **Wide-table width strategy** for the A/B/C/D `table` body, if needed.
 - **`.docx` export** (currently out of scope).

@@ -2,7 +2,7 @@
 
 ## What this is
 
-A web app that converts **pasted Excel data into Word-ready document sections**. You paste a table copied from Excel (or Google Sheets); the app restructures it into a section tree, renders it as HTML, and copies it to the clipboard so it pastes into Microsoft Word as native headings and bullet lists.
+A web app that converts **pasted Excel data into Word-ready document sections**. You paste one or more tables copied from Excel (or Google Sheets); the app restructures each into a section tree, renders it as HTML, and copies it to the clipboard so it pastes into Microsoft Word as native headings and bullet lists.
 
 ## The problem it solves
 
@@ -17,21 +17,24 @@ Wide Excel tables do not fit on an 8.5" x 11" Word page and become unreadable on
 
 ## What works today
 
-The full pipeline is implemented end to end:
+The full pipeline is implemented end to end, for multiple tables:
 
-1. **Paste → parse.** A client component captures a paste event and parses it with SheetJS into a raw Grid.
-2. **Map → tree.** One of three view modes turns the Grid into a section tree:
+1. **Paste → parse.** A client component captures each paste and parses it with SheetJS into a raw Grid, appending a new table. Tables are managed as cards in a horizontal tab strip (one edited at a time, cap 100).
+2. **Map → tree.** Each table picks one of four layouts:
    - **Grouped by field** (default) — group rows by a chosen field; members listed as bullets.
    - **Fields as bullets** — one section per row; chosen fields as `Field: value` bullets.
+   - **Pivot (nested rows)** — Excel "Rows area": pick fields in order; rows nest by that order (shared paths merge), into an arbitrary-depth `PivotNode` tree.
    - **A/B/C/D sections** — the original position-based convention (column A = section, B = subsection, C = body, D = type).
-3. **Render → preview.** The tree is rendered to HTML and shown as a live preview (or toggle to inspect the raw Grid as JSON).
-4. **Copy for Word.** A button writes `text/html` (+ a `text/plain` fallback) to the clipboard; pasting into Word yields native headings and bullet lists that fit a Letter page.
+3. **Render → preview.** The tree is rendered to HTML and shown in each card's live preview (or toggle to inspect the raw Grid as JSON).
+4. **Copy/Download for Word.** Each card writes `text/html` (+ a `text/plain` fallback) to the clipboard or downloads a `.doc`; a combined **Copy all / Download all** exports every table as one document. Pasting into Word yields native headings and bullet lists that fit a Letter page.
+
+**Styling.** Heading appearance (color, fonts, sizes, bold) is shared across all tables. The pivot view adds shared per-nesting-level styles (color/font/size/bold per depth, defaulting to all the same).
 
 See [ARCHITECTURE.md](./ARCHITECTURE.md) for the data model, view modes, and pipeline, and [ROADMAP.md](./ROADMAP.md) for status.
 
 ## Numbering
 
-The grouped and per-item views wrap their output in one numbered, titled section — you pick a **Section #** (default 1) and a **Section title**, e.g. `5 Fruit Database`, and the items beneath are numbered `5.1`, `5.2`, … (`lib/numbering.ts` `wrapInNumberedSection`). The A/B/C/D view is left un-numbered.
+The grouped and per-item views wrap their output in one numbered, titled section — you pick a **Section #** (default 1) and a **Section title**, e.g. `5 Fruit Database`, and the items beneath are numbered `5.1`, `5.2`, … (`lib/numbering.ts` `wrapInNumberedSection`). The A/B/C/D view is left un-numbered. The pivot view is also un-numbered, but takes an optional plain **Section title** as its top heading (the nested rows sit beneath it).
 
 ## Not wired in
 

@@ -37,12 +37,26 @@
  * headings stay tagged as Word Heading 1/2 (visible in the outline); these props
  * are the source formatting a keep-source paste preserves.
  */
+/**
+ * Per-nesting-level look for the pivot (nested-rows) view -- one entry per depth
+ * (index 0 = level 1). Shared across all pivot tables; defaults are all the same
+ * so nesting reads by indent alone (Excel-like) until the user diverges a level.
+ */
+export type LevelStyle = {
+  color: string; // hex
+  font: string; // font-family name
+  size: number; // pt
+  bold: boolean;
+};
+
 export type HeadingStyle = {
   color: string; // hex, e.g. "#2F5496"
   font: string; // font-family name, e.g. "Calibri Light"
-  h1Size: number; // pt, wrapper / Heading 1
-  h2Size: number; // pt, children / Heading 2
+  h1Size: number; // pt, wrapper / Heading 1 (non-pivot views)
+  h2Size: number; // pt, children / Heading 2 (non-pivot views)
   bold: boolean;
+  /** Per-pivot-level look, index 0 = level 1; drives the MsoPiv* rules below. */
+  levels: LevelStyle[];
 };
 
 export function buildWordHtml(
@@ -62,16 +76,23 @@ export function buildWordHtml(
   const weight = heading.bold ? "bold" : "normal";
   const look = (size: number) =>
     `color:${heading.color};font-family:"${heading.font}";font-size:${size}pt;font-weight:${weight}`;
-  // Pivot heading levels 1-9. Their own class (not MsoHeading*) so the indent
-  // never leaks onto grouped/list subsections, which reuse MsoHeading2. Each
-  // still maps to Word's built-in "heading N" via mso-style-name, so the
-  // document outline is correct; the left indent is direct formatting kept on a
-  // keep-source paste. Level 1 uses h1Size, the rest h2Size; indent grows 0.2in.
+  // Pivot heading levels 1-9. Their own class (not MsoHeading*) so the per-level
+  // look + indent never leak onto grouped/list subsections, which reuse
+  // MsoHeading2. Each still maps to Word's built-in "heading N" via
+  // mso-style-name, so the document outline is correct; the left indent is direct
+  // formatting kept on a keep-source paste. Each level's color/font/size/bold
+  // comes from heading.levels[n-1] (falls back to the base look); indent grows.
   const pivotRules = Array.from({ length: 9 }, (_, i) => {
     const n = i + 1;
-    const size = n === 1 ? heading.h1Size : heading.h2Size;
+    const lv = heading.levels[i] ?? {
+      color: heading.color,
+      font: heading.font,
+      size: n === 1 ? heading.h1Size : heading.h2Size,
+      bold: heading.bold,
+    };
+    const lvLook = `color:${lv.color};font-family:"${lv.font}";font-size:${lv.size}pt;font-weight:${lv.bold ? "bold" : "normal"}`;
     const indent = ((n - 1) * 0.2).toFixed(1);
-    return `p.MsoPiv${n}{mso-style-name:"heading ${n}";mso-outline-level:${n};${look(size)};margin-left:${indent}in}`;
+    return `p.MsoPiv${n}{mso-style-name:"heading ${n}";mso-outline-level:${n};${lvLook};margin-left:${indent}in}`;
   }).join("");
   return (
     `<html xmlns:o="urn:schemas-microsoft-com:office:office" ` +

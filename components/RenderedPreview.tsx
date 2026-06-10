@@ -43,14 +43,20 @@ export function RenderedPreview({
 
   const h = headingStyle;
   const weight = h.bold ? 700 : 400;
-  // Pivot (nested-rows) levels 1-9: same look as headings, distinguished by a
+  // Pivot (nested-rows) levels 1-9: each level's own color/font/size/bold, plus a
   // growing left indent. Mirrors the MsoPiv* rules in buildWordHtml so the
-  // preview matches the Word output. Level 1 uses h1Size, the rest h2Size.
+  // preview matches the Word output. Per-level look comes from h.levels[n-1].
   const levelCss = Array.from({ length: 9 }, (_, i) => {
     const n = i + 1;
-    const size = n === 1 ? h.h1Size : h.h2Size;
+    const lv = h.levels[i] ?? {
+      color: h.color,
+      font: h.font,
+      size: n === 1 ? h.h1Size : h.h2Size,
+      bold: h.bold,
+    };
+    const lvWeight = lv.bold ? 700 : 400;
     const indent = ((n - 1) * 0.2).toFixed(1);
-    return `.ws-preview [data-level="${n}"]{color:${h.color};font-family:'${h.font}';font-size:${size}pt;font-weight:${weight};margin-left:${indent}in}`;
+    return `.ws-preview [data-level="${n}"]{color:${lv.color};font-family:'${lv.font}';font-size:${lv.size}pt;font-weight:${lvWeight};margin-left:${indent}in}`;
   }).join("");
   // Body text inherits the container font; headings override it below.
   const css =

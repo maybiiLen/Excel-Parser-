@@ -147,34 +147,34 @@ function TableCardInner({
           </label>
         )}
         {(layout === "list" || layout === "grouped") && (
-          <>
-            <label className="flex items-center gap-2 text-sm text-foreground/60">
-              Section #
-              <input
-                type="text"
-                inputMode="numeric"
-                pattern="[0-9]*"
-                value={table.sectionNumberInput}
-                onChange={(e) =>
-                  onChange({
-                    sectionNumberInput: e.target.value.replace(/[^0-9]/g, ""),
-                  })
-                }
-                aria-label="Section number"
-                className="w-16 rounded-md border border-foreground/20 px-2 py-1 text-sm text-foreground"
-              />
-            </label>
-            <label className="flex items-center gap-2 text-sm text-foreground/60">
-              Section title
-              <input
-                type="text"
-                value={table.sectionTitle}
-                onChange={(e) => onChange({ sectionTitle: e.target.value })}
-                placeholder="e.g. Fruit Database"
-                className="w-48 rounded-md border border-foreground/20 px-2 py-1 text-sm text-foreground"
-              />
-            </label>
-          </>
+          <label className="flex items-center gap-2 text-sm text-foreground/60">
+            Section #
+            <input
+              type="text"
+              inputMode="numeric"
+              pattern="[0-9]*"
+              value={table.sectionNumberInput}
+              onChange={(e) =>
+                onChange({
+                  sectionNumberInput: e.target.value.replace(/[^0-9]/g, ""),
+                })
+              }
+              aria-label="Section number"
+              className="w-16 rounded-md border border-foreground/20 px-2 py-1 text-sm text-foreground"
+            />
+          </label>
+        )}
+        {layout !== "sections" && (
+          <label className="flex items-center gap-2 text-sm text-foreground/60">
+            Section title
+            <input
+              type="text"
+              value={table.sectionTitle}
+              onChange={(e) => onChange({ sectionTitle: e.target.value })}
+              placeholder="e.g. Fruit Database"
+              className="w-48 rounded-md border border-foreground/20 px-2 py-1 text-sm text-foreground"
+            />
+          </label>
         )}
         <button
           type="button"

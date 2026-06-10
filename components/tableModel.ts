@@ -92,10 +92,15 @@ export function fieldColumnsOf(t: TableState): number[] {
  * source of truth used by both the card preview and the combined export.
  */
 export function tableToHtml(t: TableState): string {
-  // Pivot stands alone (plain, un-numbered nested rows) -- not wrapped in a
-  // numbered section like the grouped/per-item views.
+  // Pivot: plain, un-numbered nested rows (not wrapped in a numbered section like
+  // the grouped/per-item views). An optional Section title becomes a synthetic
+  // root node -> the title is level 1 and the groups nest under it at level 2+.
+  // Guard the empty tree first so a title never renders over nothing.
   if (t.layout === "pivot") {
-    return renderPivotTree(rowsToPivotTree(t.grid, t.pivotOrder));
+    const tree = rowsToPivotTree(t.grid, t.pivotOrder);
+    if (tree.length === 0) return "";
+    const label = t.sectionTitle.trim();
+    return renderPivotTree(label ? [{ title: label, children: tree }] : tree);
   }
   const fieldColumns = fieldColumnsOf(t);
   const num = sectionNumberOf(t);
