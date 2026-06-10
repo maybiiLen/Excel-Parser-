@@ -130,3 +130,52 @@ export function rowsToAttributeSections(
 
   return sections;
 }
+
+/**
+ * Group-by mapper (pivot-style): one Section per distinct value of `groupColumn`,
+ * with the rows that share it listed as bullets under that heading.
+ *
+ * Row 0 supplies field names. Each data row is bucketed by the trimmed value of
+ * its `groupColumn` cell; a blank group cell buckets under "(blank)" and a blank
+ * label becomes "(untitled)", so NO row is silently dropped (unlike the per-item
+ * mappers, where a blank title leaves nothing renderable -- here the group
+ * section already exists). First-seen group order and within-group row order are
+ * preserved (a Map keeps insertion order). Each member bullet is the `labelColumn`
+ * value plus, when `memberFieldColumns` is non-empty, a parenthetical of those
+ * values joined by ", " (values only).
+ *
+ * Resilient like the other mappers: never throws. An empty or header-only grid
+ * yields `[]`. The `number` field is left "" (numbering omitted by renderTree).
+ */
+export function rowsToGroupedSections(
+  rows: Grid,
+  groupColumn: number,
+  labelColumn: number,
+  memberFieldColumns: number[],
+): Section[] {
+  const [, ...dataRows] = rows;
+
+  const groups = new Map<string, string[]>();
+  for (const row of dataRows) {
+    const groupValue = cellToString(row?.[groupColumn]).trim() || "(blank)";
+    const label = cellToString(row?.[labelColumn]).trim() || "(untitled)";
+    const extras = memberFieldColumns.map((c) => cellToString(row?.[c]));
+    const item = extras.length ? `${label} (${extras.join(", ")})` : label;
+
+    const bucket = groups.get(groupValue);
+    if (bucket) bucket.push(item);
+    else groups.set(groupValue, [item]);
+  }
+
+  const sections: Section[] = [];
+  for (const [title, items] of groups) {
+    sections.push({
+      number: "",
+      title,
+      children: [],
+      body: { type: "bullets", items },
+    });
+  }
+
+  return sections;
+}

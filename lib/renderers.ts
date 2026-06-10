@@ -55,9 +55,10 @@ export function renderBody(body: Body): string {
  *                   carries one, e.g. the transpose layout's attribute table)
  *   - subsection -> <h3>{number} {title}</h3> followed by renderBody(body)
  *
- * The dotted `number` is machine-generated (digits and dots) and is left
- * unescaped; only user-derived text (titles, plus the body content) is escaped.
- * Expects an already-numbered tree (see `numberTree`).
+ * A blank `number` is omitted (along with its trailing space), so an un-numbered
+ * tree renders title-only headings. When present, the dotted `number` is
+ * machine-generated (digits and dots) and left unescaped; only user-derived text
+ * (titles, plus the body content) is escaped.
  *
  * Returns a fragment -- no <html>/<head>/<meta charset>/<body> wrapper. The
  * clipboard MIME/charset framing belongs to the later clipboard-output step.
@@ -68,10 +69,12 @@ export function renderBody(body: Body): string {
 export function renderTree(sections: Section[]): string {
   const blocks: string[] = [];
   for (const section of sections) {
-    blocks.push(`<h2>${section.number} ${escapeHtml(section.title)}</h2>`);
+    const sNum = section.number ? `${section.number} ` : "";
+    blocks.push(`<h2>${sNum}${escapeHtml(section.title)}</h2>`);
     if (section.body) blocks.push(renderBody(section.body));
     for (const sub of section.children) {
-      blocks.push(`<h3>${sub.number} ${escapeHtml(sub.title)}</h3>`);
+      const subNum = sub.number ? `${sub.number} ` : "";
+      blocks.push(`<h3>${subNum}${escapeHtml(sub.title)}</h3>`);
       blocks.push(renderBody(sub.body));
     }
   }

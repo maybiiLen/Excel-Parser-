@@ -1,20 +1,19 @@
 "use client";
 
-import {
-  useMemo,
-  useState,
-  type ChangeEvent,
-  type ClipboardEvent,
-} from "react";
+import { useMemo, useState, type ClipboardEvent } from "react";
 import { parseClipboard } from "@/lib/parser";
-import { rowsToTree, rowsToAttributeSections } from "@/lib/mapper";
-import { numberTree } from "@/lib/numbering";
+import {
+  rowsToTree,
+  rowsToAttributeSections,
+  rowsToGroupedSections,
+} from "@/lib/mapper";
 import { renderTree } from "@/lib/renderers";
+import { buildWordHtml, htmlToPlainText } from "@/lib/clipboard";
 import type { Grid } from "@/lib/types";
 import { JsonPreview } from "./JsonPreview";
 import { RenderedPreview } from "./RenderedPreview";
 
-type Layout = "sections" | "list";
+type Layout = "list" | "grouped" | "sections";
 
 /** First header containing "name" (case-insensitive), else the first column. */
 function pickDefaultTitleCol(rows: Grid): number {
@@ -25,14 +24,36 @@ function pickDefaultTitleCol(rows: Grid): number {
   return i >= 0 ? i : 0;
 }
 
+const GROUP_KEYWORDS = [
+  "origin", "season", "type", "category", "status", "risk", "level",
+  "color", "region", "class", "group", "storage", "method",
+];
+
+/** First header matching a category-ish keyword, else first column != titleCol. */
+function pickDefaultGroupCol(rows: Grid, titleCol: number): number {
+  const header = (rows[0] ?? []).map((c) =>
+    typeof c === "string" ? c.toLowerCase() : "",
+  );
+  for (let i = 0; i < header.length; i++) {
+    if (i !== titleCol && GROUP_KEYWORDS.some((k) => header[i].includes(k))) {
+      return i;
+    }
+  }
+  for (let i = 0; i < header.length; i++) {
+    if (i !== titleCol) return i;
+  }
+  return titleCol;
+}
+
 export function PasteInput() {
   const [grid, setGrid] = useState<Grid | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [root, setRoot] = useState<number>(6);
   const [view, setView] = useState<"rendered" | "json">("rendered");
-  const [layout, setLayout] = useState<Layout>("list");
+  const [layout, setLayout] = useState<Layout>("grouped");
   const [titleCol, setTitleCol] = useState<number>(0);
+  const [groupCol, setGroupCol] = useState<number>(0);
   const [selectedCols, setSelectedCols] = useState<Set<number>>(new Set());
+  const [copyState, setCopyState] = useState<"idle" | "copied" | "error">("idle");
 
   // Header row, for the title-column picker and field checklist.
   const headers = useMemo(
@@ -40,29 +61,34 @@ export function PasteInput() {
     [grid],
   );
 
-  // Columns rendered as bullets, in column order: checked, minus the title column.
+  // Columns shown as bullets / parenthetical extras, in column order: checked,
+  // minus the title (label) column, and -- in grouped mode -- the group column.
   const fieldColumns = useMemo(
     () =>
       headers
         .map((_, i) => i)
-        .filter((i) => i !== titleCol && selectedCols.has(i)),
-    [headers, titleCol, selectedCols],
+        .filter(
+          (i) =>
+            i !== titleCol &&
+            (layout !== "grouped" || i !== groupCol) &&
+            selectedCols.has(i),
+        ),
+    [headers, titleCol, groupCol, layout, selectedCols],
   );
 
-  // parse -> map -> number -> render, derived from the stored grid so layout,
-  // title-column, field, and root changes re-render without a re-paste. The
-  // mapper re-runs only on grid/layout/titleCol/fieldColumns; numberTree/
-  // renderTree on a root change.
+  // parse -> map -> render, derived from the stored grid so layout, columns, and
+  // field changes re-render without a re-paste. The mapper re-runs only on
+  // grid/layout/titleCol/groupCol/fieldColumns. Headings carry no number (unset
+  // by the mappers; omitted by renderTree).
   const tree = useMemo(() => {
     if (!grid) return null;
-    return layout === "list"
-      ? rowsToAttributeSections(grid, titleCol, fieldColumns)
-      : rowsToTree(grid);
-  }, [grid, layout, titleCol, fieldColumns]);
-  const html = useMemo(
-    () => (tree ? renderTree(numberTree(tree, root)) : ""),
-    [tree, root],
-  );
+    if (layout === "list")
+      return rowsToAttributeSections(grid, titleCol, fieldColumns);
+    if (layout === "grouped")
+      return rowsToGroupedSections(grid, groupCol, titleCol, fieldColumns);
+    return rowsToTree(grid);
+  }, [grid, layout, titleCol, groupCol, fieldColumns]);
+  const html = useMemo(() => (tree ? renderTree(tree) : ""), [tree]);
 
   function handlePaste(e: ClipboardEvent<HTMLDivElement>) {
     e.preventDefault();
@@ -77,7 +103,9 @@ export function PasteInput() {
       }
       setError(null);
       setGrid(rows);
-      setTitleCol(pickDefaultTitleCol(rows));
+      const t = pickDefaultTitleCol(rows);
+      setTitleCol(t);
+      setGroupCol(pickDefaultGroupCol(rows, t));
       setSelectedCols(new Set((rows[0] ?? []).map((_, i) => i))); // all fields on
     } catch (err) {
       setGrid(null);
@@ -87,13 +115,6 @@ export function PasteInput() {
     }
   }
 
-  // Keep `root` out of UI-validation reach of numberTree: ignore empty/NaN/
-  // non-positive/fractional input so the preview never renders "NaN" numbers.
-  function handleRootChange(e: ChangeEvent<HTMLInputElement>) {
-    const next = Number(e.target.value);
-    if (Number.isInteger(next) && next > 0) setRoot(next);
-  }
-
   function toggleCol(i: number) {
     setSelectedCols((prev) => {
       const next = new Set(prev);
@@ -101,6 +122,29 @@ export function PasteInput() {
       else next.add(i);
       return next;
     });
+  }
+
+  // Write the rendered sections to the clipboard as text/html (+ a text/plain
+  // fallback) so they paste into Word as native headings + bullet lists. The
+  // ClipboardItem is built synchronously from the in-memory `html` before any
+  // await, preserving the user-gesture requirement.
+  async function copyForWord() {
+    if (typeof ClipboardItem === "undefined" || !navigator.clipboard?.write) {
+      setCopyState("error");
+      setTimeout(() => setCopyState("idle"), 2000);
+      return;
+    }
+    try {
+      const item = new ClipboardItem({
+        "text/html": new Blob([buildWordHtml(html)], { type: "text/html" }),
+        "text/plain": new Blob([htmlToPlainText(html)], { type: "text/plain" }),
+      });
+      await navigator.clipboard.write([item]);
+      setCopyState("copied");
+    } catch {
+      setCopyState("error");
+    }
+    setTimeout(() => setCopyState("idle"), 2000);
   }
 
   function clear() {
@@ -148,13 +192,30 @@ export function PasteInput() {
                   onChange={(e) => setLayout(e.target.value as Layout)}
                   className="rounded-md border border-foreground/20 px-2 py-1 text-sm text-foreground"
                 >
+                  <option value="grouped">Grouped by field</option>
                   <option value="list">Fields as bullets</option>
                   <option value="sections">A/B/C/D sections</option>
                 </select>
               </label>
-              {layout === "list" && headers.length > 0 && (
+              {layout === "grouped" && headers.length > 0 && (
                 <label className="flex items-center gap-2 text-sm text-foreground/60">
-                  Title column
+                  Group by
+                  <select
+                    value={groupCol}
+                    onChange={(e) => setGroupCol(Number(e.target.value))}
+                    className="rounded-md border border-foreground/20 px-2 py-1 text-sm text-foreground"
+                  >
+                    {headers.map((h, i) => (
+                      <option key={i} value={i}>
+                        {h || `Column ${i + 1}`}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              )}
+              {layout !== "sections" && headers.length > 0 && (
+                <label className="flex items-center gap-2 text-sm text-foreground/60">
+                  {layout === "grouped" ? "Label column" : "Title column"}
                   <select
                     value={titleCol}
                     onChange={(e) => setTitleCol(Number(e.target.value))}
@@ -168,17 +229,6 @@ export function PasteInput() {
                   </select>
                 </label>
               )}
-              <label className="flex items-center gap-2 text-sm text-foreground/60">
-                Start numbering at
-                <input
-                  type="number"
-                  min={1}
-                  step={1}
-                  value={root}
-                  onChange={handleRootChange}
-                  className="w-16 rounded-md border border-foreground/20 px-2 py-1 text-sm text-foreground"
-                />
-              </label>
               <button
                 type="button"
                 onClick={() =>
@@ -187,6 +237,18 @@ export function PasteInput() {
                 className="rounded-md border border-foreground/20 px-3 py-1 text-xs font-medium transition-colors hover:bg-foreground/5"
               >
                 {view === "rendered" ? "View JSON" : "View rendered"}
+              </button>
+              <button
+                type="button"
+                onClick={copyForWord}
+                disabled={html === ""}
+                className="rounded-md border border-foreground/20 px-3 py-1 text-xs font-medium transition-colors hover:bg-foreground/5 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {copyState === "copied"
+                  ? "Copied!"
+                  : copyState === "error"
+                    ? "Copy failed"
+                    : "Copy for Word"}
               </button>
             </div>
             <button
@@ -198,23 +260,25 @@ export function PasteInput() {
             </button>
           </div>
 
-          {layout === "list" && headers.length > 0 && (
-            <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-sm text-foreground/70">
-              <span className="text-foreground/60">Show fields:</span>
-              {headers.map((h, i) =>
-                i === titleCol ? null : (
-                  <label key={i} className="flex items-center gap-1.5">
-                    <input
-                      type="checkbox"
-                      checked={selectedCols.has(i)}
-                      onChange={() => toggleCol(i)}
-                    />
-                    {h || `Column ${i + 1}`}
-                  </label>
-                ),
-              )}
-            </div>
-          )}
+          {(layout === "list" || layout === "grouped") &&
+            headers.length > 0 && (
+              <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-sm text-foreground/70">
+                <span className="text-foreground/60">Show fields:</span>
+                {headers.map((h, i) =>
+                  i === titleCol ||
+                  (layout === "grouped" && i === groupCol) ? null : (
+                    <label key={i} className="flex items-center gap-1.5">
+                      <input
+                        type="checkbox"
+                        checked={selectedCols.has(i)}
+                        onChange={() => toggleCol(i)}
+                      />
+                      {h || `Column ${i + 1}`}
+                    </label>
+                  ),
+                )}
+              </div>
+            )}
 
           {view === "json" ? (
             <JsonPreview grid={grid} />
@@ -222,9 +286,11 @@ export function PasteInput() {
             <RenderedPreview
               html={html}
               emptyHint={
-                layout === "list"
-                  ? "Pasted, but no rows produced a section. The first row is read as headers; each later row needs a non-blank value in the chosen title column. Tick fields above to show them. Switch to JSON to inspect the raw grid."
-                  : "Pasted, but no sections were found. Column A should hold section titles; rows with a blank column A become subsections of the section above. Switch to JSON to inspect the raw grid."
+                layout === "grouped"
+                  ? "Pasted, but no groups were produced. The first row is read as headers; you need at least one data row. Pick a 'Group by' column and a label column above, or switch to JSON to inspect the raw grid."
+                  : layout === "list"
+                    ? "Pasted, but no rows produced a section. The first row is read as headers; each later row needs a non-blank value in the chosen title column. Tick fields above to show them. Switch to JSON to inspect the raw grid."
+                    : "Pasted, but no sections were found. Column A should hold section titles; rows with a blank column A become subsections of the section above. Switch to JSON to inspect the raw grid."
               }
             />
           )}
