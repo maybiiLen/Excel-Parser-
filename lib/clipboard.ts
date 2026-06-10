@@ -52,10 +52,27 @@ export function buildWordHtml(
 ): string {
   const body = fragment
     .replace(/<h2>([\s\S]*?)<\/h2>/g, '<p class="MsoHeading1">$1</p>')
-    .replace(/<h3>([\s\S]*?)<\/h3>/g, '<p class="MsoHeading2">$1</p>');
+    .replace(/<h3>([\s\S]*?)<\/h3>/g, '<p class="MsoHeading2">$1</p>')
+    // Pivot (nested-rows) headings: data-level="N" -> Word Heading N. Anchored to
+    // a 1-9 digit so it never matches a bare body <p>. See renderPivotTree.
+    .replace(
+      /<p class="ws-lvl" data-level="([1-9])">([\s\S]*?)<\/p>/g,
+      '<p class="MsoPiv$1">$2</p>',
+    );
   const weight = heading.bold ? "bold" : "normal";
   const look = (size: number) =>
     `color:${heading.color};font-family:"${heading.font}";font-size:${size}pt;font-weight:${weight}`;
+  // Pivot heading levels 1-9. Their own class (not MsoHeading*) so the indent
+  // never leaks onto grouped/list subsections, which reuse MsoHeading2. Each
+  // still maps to Word's built-in "heading N" via mso-style-name, so the
+  // document outline is correct; the left indent is direct formatting kept on a
+  // keep-source paste. Level 1 uses h1Size, the rest h2Size; indent grows 0.2in.
+  const pivotRules = Array.from({ length: 9 }, (_, i) => {
+    const n = i + 1;
+    const size = n === 1 ? heading.h1Size : heading.h2Size;
+    const indent = ((n - 1) * 0.2).toFixed(1);
+    return `p.MsoPiv${n}{mso-style-name:"heading ${n}";mso-outline-level:${n};${look(size)};margin-left:${indent}in}`;
+  }).join("");
   return (
     `<html xmlns:o="urn:schemas-microsoft-com:office:office" ` +
     `xmlns:w="urn:schemas-microsoft-com:office:word" ` +
@@ -68,6 +85,7 @@ export function buildWordHtml(
     `body{overflow-wrap:break-word;font-family:"${bodyFont}"}` +
     `p.MsoHeading1{mso-style-name:"heading 1";mso-outline-level:1;${look(heading.h1Size)}}` +
     `p.MsoHeading2{mso-style-name:"heading 2";mso-outline-level:2;${look(heading.h2Size)}}` +
+    pivotRules +
     `</style>` +
     `</head><body>${body}</body></html>`
   );

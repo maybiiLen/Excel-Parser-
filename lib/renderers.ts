@@ -1,4 +1,4 @@
-import type { Body, Section } from "./types";
+import type { Body, PivotNode, Section } from "./types";
 
 /**
  * Escape the three markup-significant characters in user-derived text.
@@ -78,5 +78,37 @@ export function renderTree(sections: Section[]): string {
       blocks.push(renderBody(sub.body));
     }
   }
+  return blocks.join("\n");
+}
+
+/**
+ * Render a pivot (nested-rows) tree as one HTML document fragment.
+ *
+ * Each node becomes one plain (un-numbered) heading paragraph whose nesting
+ * depth is carried in a `data-level` ATTRIBUTE rather than the tag name: HTML
+ * only has h1-h6, and a class like `pl-3` would collide with Tailwind padding
+ * utilities. `buildWordHtml` rewrites `data-level="N"` to a Word `MsoPiv{N}`
+ * heading style and `RenderedPreview` styles `[data-level="N"]`, so the one
+ * attribute drives both render targets. Level is 1-based and clamped at 9
+ * (Word's `mso-outline-level` maximum); deeper nodes still render at level 9.
+ *
+ * Only user-derived titles are escaped; the `class`/`data-level` values are
+ * machine constants (a single digit), so there is no attribute-injection
+ * surface. Returns a bare fragment, like `renderTree`.
+ *
+ * Pure: builds a local array and returns its join; the input is never mutated.
+ */
+export function renderPivotTree(nodes: PivotNode[]): string {
+  const blocks: string[] = [];
+  const walk = (list: PivotNode[], level: number) => {
+    const lvl = Math.min(level, 9);
+    for (const node of list) {
+      blocks.push(
+        `<p class="ws-lvl" data-level="${lvl}">${escapeHtml(node.title)}</p>`,
+      );
+      if (node.children.length > 0) walk(node.children, level + 1);
+    }
+  };
+  walk(nodes, 1);
   return blocks.join("\n");
 }

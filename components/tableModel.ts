@@ -6,12 +6,13 @@ import {
   rowsToTree,
   rowsToAttributeSections,
   rowsToGroupedSections,
+  rowsToPivotTree,
 } from "@/lib/mapper";
 import { wrapInNumberedSection } from "@/lib/numbering";
-import { renderTree } from "@/lib/renderers";
+import { renderTree, renderPivotTree } from "@/lib/renderers";
 import type { Grid } from "@/lib/types";
 
-export type Layout = "list" | "grouped" | "sections";
+export type Layout = "list" | "grouped" | "sections" | "pivot";
 
 /** One pasted table: its grid plus the per-table config the user can tweak. */
 export type TableState = {
@@ -22,6 +23,8 @@ export type TableState = {
   titleCol: number;
   groupCol: number;
   selectedCols: Set<number>;
+  /** Ordered columns the pivot view nests rows by (selection order). */
+  pivotOrder: number[];
   /** Wrapping section number, held as a raw string so it can be backspaced. */
   sectionNumberInput: string;
   sectionTitle: string;
@@ -89,6 +92,11 @@ export function fieldColumnsOf(t: TableState): number[] {
  * source of truth used by both the card preview and the combined export.
  */
 export function tableToHtml(t: TableState): string {
+  // Pivot stands alone (plain, un-numbered nested rows) -- not wrapped in a
+  // numbered section like the grouped/per-item views.
+  if (t.layout === "pivot") {
+    return renderPivotTree(rowsToPivotTree(t.grid, t.pivotOrder));
+  }
   const fieldColumns = fieldColumnsOf(t);
   const num = sectionNumberOf(t);
   const title = t.sectionTitle.trim();

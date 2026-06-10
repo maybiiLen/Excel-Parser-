@@ -20,6 +20,7 @@ The problem this solves: wide Excel tables do not fit an 8.5x11 Word page. This 
 - Client-side only. No API routes, no backend, no database. Parsing runs in the browser.
 - Files at repo root. No `src/` directory. Import alias `@/*` maps to `./*`.
 - SheetJS clipboard parse: `getData('text/html')` first, `getData('text/plain')` TSV fallback. Use `sheet_to_json(ws, { header: 1, blankrows: false, defval: "", raw: false })`. Keep `defval: ""` so blank cells stay as empty strings and column positions stay aligned.
+- Keep docs in sync with code. When a change adds or alters a view mode, the data model, the pipeline, or a user-facing control, update the affected docs in the SAME change: this `CLAUDE.md` (Architecture / Data Model / View modes / Current status), `README.md`, and the relevant `docs/` file (OVERVIEW / ARCHITECTURE / ROADMAP). Stale docs are a bug.
 
 ## Architecture
 Pipeline: paste → `parseClipboard` (Grid) → a mapper (chosen by view mode) → `Section[]` → `renderTree` (HTML fragment) → live preview + "Copy for Word" clipboard write.
@@ -30,7 +31,8 @@ Pipeline: paste → `parseClipboard` (Grid) → a mapper (chosen by view mode) �
 - `lib/types.ts` — Section, Subsection, Body, and raw Grid types
 - `lib/parser.ts` — SheetJS clipboard → Grid (`parseClipboard`)
 - `lib/mapper.ts` — Grid → Section tree; three mappers: `rowsToTree` (A/B/C/D), `rowsToAttributeSections` (per-item), `rowsToGroupedSections` (group-by)
-- `lib/numbering.ts` — `wrapInNumberedSection`: wraps the grouped/per-item output under one user-numbered, titled section (children numbered N.1, N.2, …)
+- `lib/numbering.ts` — `wrapInNumberedSection`: wraps the grouped/per-item output under one user
+-numbered, titled section (children numbered N.1, N.2, …)
 - `lib/renderers.ts` — `renderTree` (tree → HTML fragment) + `renderBody`; escapes user text, omits blank numbers
 - `lib/clipboard.ts` — `buildWordHtml` (Word-friendly doc wrapper) + `htmlToPlainText`
 - `docs/` — OVERVIEW, ARCHITECTURE, ROADMAP

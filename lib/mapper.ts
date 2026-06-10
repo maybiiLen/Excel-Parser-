@@ -1,4 +1,4 @@
-import type { Grid, Section, Subsection, Body } from "./types";
+import type { Grid, Section, Subsection, Body, PivotNode } from "./types";
 
 /**
  * Coerce a raw grid cell to a string.
@@ -178,4 +178,53 @@ export function rowsToGroupedSections(
   }
 
   return sections;
+}
+
+/**
+ * Pivot mapper (Excel "Rows area"): nest rows into an arbitrary-depth tree by an
+ * ORDERED list of columns. `orderedColumns[0]` is the outermost grouping; within
+ * each group rows nest by `orderedColumns[1]`; and so on. Rows that share a full
+ * value-path MERGE into the same branch (a pivot with only Row fields, no
+ * Values), so duplicate paths collapse.
+ *
+ * Row 0 is the header (skipped). Each segment is the trimmed cell value, blank ->
+ * "(blank)" (same policy as the grouped view, so no row is dropped). First-seen
+ * order is preserved at every level: a JS array keeps push order, and a per-level
+ * `Map` (held in a `WeakMap` keyed by node, discarded after the build) is only a
+ * dedup index, never the ordered output.
+ *
+ * Resilient like the other mappers: never throws (`row?.[col]` + `cellToString`).
+ * Empty `orderedColumns`, or an empty/header-only grid, yields `[]`.
+ */
+export function rowsToPivotTree(
+  rows: Grid,
+  orderedColumns: number[],
+): PivotNode[] {
+  if (orderedColumns.length === 0) return [];
+  const [, ...dataRows] = rows;
+
+  const roots: PivotNode[] = [];
+  const rootIndex = new Map<string, PivotNode>();
+  // Per-node child dedup index; kept off to the side so PivotNode stays clean,
+  // and garbage-collected once the build finishes.
+  const childIndex = new WeakMap<PivotNode, Map<string, PivotNode>>();
+
+  for (const row of dataRows) {
+    let siblings = roots;
+    let index = rootIndex;
+    for (const col of orderedColumns) {
+      const key = cellToString(row?.[col]).trim() || "(blank)";
+      let node = index.get(key);
+      if (!node) {
+        node = { title: key, children: [] };
+        siblings.push(node); // first sight -> preserve insertion order
+        index.set(key, node);
+        childIndex.set(node, new Map());
+      }
+      siblings = node.children;
+      index = childIndex.get(node)!;
+    }
+  }
+
+  return roots;
 }

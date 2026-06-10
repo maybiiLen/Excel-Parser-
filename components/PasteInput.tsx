@@ -92,6 +92,7 @@ export function PasteInput() {
           titleCol: t,
           groupCol: pickDefaultGroupCol(rows, t),
           selectedCols: new Set((rows[0] ?? []).map((_, i) => i)), // all fields on
+          pivotOrder: [],
           sectionNumberInput: nextNumber,
           sectionTitle: "",
         };

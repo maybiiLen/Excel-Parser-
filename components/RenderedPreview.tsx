@@ -17,7 +17,7 @@ import type { HeadingStyle } from "@/lib/clipboard";
  */
 const previewClasses =
   "ws-preview rounded-lg border border-foreground/15 bg-foreground/[0.03] p-4 text-sm " +
-  "[&_h2]:mt-4 [&_h3]:mt-3 " +
+  "[&_h2]:mt-4 [&_h3]:mt-3 [&_[data-level]]:mt-2 " +
   "[&_p]:my-2 [&_ul]:my-2 [&_ul]:list-disc [&_ul]:pl-6 " +
   "[&_table]:my-2 [&_td]:align-top";
 
@@ -43,10 +43,20 @@ export function RenderedPreview({
 
   const h = headingStyle;
   const weight = h.bold ? 700 : 400;
+  // Pivot (nested-rows) levels 1-9: same look as headings, distinguished by a
+  // growing left indent. Mirrors the MsoPiv* rules in buildWordHtml so the
+  // preview matches the Word output. Level 1 uses h1Size, the rest h2Size.
+  const levelCss = Array.from({ length: 9 }, (_, i) => {
+    const n = i + 1;
+    const size = n === 1 ? h.h1Size : h.h2Size;
+    const indent = ((n - 1) * 0.2).toFixed(1);
+    return `.ws-preview [data-level="${n}"]{color:${h.color};font-family:'${h.font}';font-size:${size}pt;font-weight:${weight};margin-left:${indent}in}`;
+  }).join("");
   // Body text inherits the container font; headings override it below.
   const css =
     `.ws-preview h2{color:${h.color};font-family:'${h.font}';font-size:${h.h1Size}pt;font-weight:${weight}}` +
-    `.ws-preview h3{color:${h.color};font-family:'${h.font}';font-size:${h.h2Size}pt;font-weight:${weight}}`;
+    `.ws-preview h3{color:${h.color};font-family:'${h.font}';font-size:${h.h2Size}pt;font-weight:${weight}}` +
+    levelCss;
 
   return (
     <div

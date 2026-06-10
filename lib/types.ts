@@ -34,6 +34,18 @@ export type Body =
   | { type: "bullets"; items: string[] }
   | { type: "table"; rows: string[][] };
 
+/**
+ * A node in the pivot (nested-rows) tree -- the Excel "Rows area" model, where
+ * an ordered list of fields nests rows into an arbitrary-depth hierarchy and
+ * shared value-paths merge. Pure nesting: a leaf is a node with no children; no
+ * body and no number (the pivot view renders plain, indented Word headings).
+ * Separate from Section/Subsection, which stay deliberately two levels deep.
+ */
+export interface PivotNode {
+  title: string;
+  children: PivotNode[];
+}
+
 // ---------------------------------------------------------------------------
 // Raw clipboard grid -- the output of today's parser, before any mapping.
 //
