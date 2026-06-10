@@ -6,14 +6,15 @@ The product is a **section tree**, not a flat table. Everything is built around 
 
 ```ts
 Section {
-  number: string      // "6", generated
-  title: string       // "FRUIT"
+  number: string        // "" today (numbering is not applied); "6" if numberTree is used
+  title: string         // "FRUIT" / a group value / an item name
   children: Subsection[]
+  body?: Body            // optional: content rendered directly under the section heading
 }
 
 Subsection {
-  number: string      // "6.1", generated
-  title: string       // "Fruit Description"
+  number: string        // "" today; "6.1" if numberTree is used
+  title: string
   body: Body
 }
 
@@ -23,87 +24,102 @@ Body =
   | { type: "table", rows: string[][] }
 ```
 
-Today's parser produces a simpler intermediate — a raw **Grid** (`Cell[][]`) — which the (deferred) convention mapper will turn into the tree above.
+`Section.body` lets a section carry content directly (used by the grouped and per-item views, which emit one bullet list per section). The A/B/C/D view instead puts bodies on `Subsection`s. The parser produces a raw **Grid** (`Cell[][]`) which a mapper turns into the tree.
 
-## Input convention (MVP)
+## View modes (how a Grid becomes a tree)
 
-The user pastes a block where **column position defines role**:
+The pasted Grid is mapped to a section tree by one of three mappers, selected in the UI (`components/PasteInput.tsx`). Default is **Grouped by field**.
+
+### 1. Grouped by field — `rowsToGroupedSections` (default)
+Row 0 is field names. Rows are grouped by a chosen **group column**; each distinct value becomes a section heading, and the rows that share it are listed as bullets. Each bullet is a **label column** value plus, optionally, a parenthetical of other checked fields.
+
+```
+Brazil
+- Apple (Winter, Low)
+- Raspberry (Winter, Low)
+USA
+- Grape (Year-round, High)
+```
+Blank group cell → `(blank)` bucket; blank label → `(untitled)` (no row is dropped). First-seen group order and within-group row order are preserved.
+
+### 2. Fields as bullets — `rowsToAttributeSections` (per-item / transpose)
+Row 0 is field names. Each later row becomes a section titled by a chosen **title column**, with the other selected columns as `Field: value` bullets.
+
+```
+Apple
+- ID: UPC86921
+- Origin: Brazil
+```
+
+### 3. A/B/C/D sections — `rowsToTree` (original position convention)
 
 | Column | Role |
 | ------ | ---- |
 | **A** filled | New **section** title |
-| **A** blank  | Subsection belongs to the section above |
+| **A** blank  | Subsection of the section above |
 | **B**        | Subsection title |
 | **C**        | Body content |
 | **D**        | Body type flag — `text`, `bullet`, or `table` |
 
-Blank cells are preserved as `""` during parsing so these column positions stay aligned.
+This is the only view that can produce a `table` body (when D = `table`, C is split on newlines/tabs). Blank cells are preserved as `""` during parsing so the A/B/C/D positions stay aligned.
+
+The grouped and per-item views are header-aware (row 0 = field names) and share a **field checklist** for choosing which columns appear.
 
 ## Data flow
 
 ```
-clipboard (text/html)
+clipboard (text/html, else text/plain)
   -> SheetJS XLSX.read({ type: "string" })
-  -> sheet_to_json({ header: 1 })            <- raw Grid (today stops here)
-  -> convention mapper (A/B/C/D)             -> Section tree
-  -> numbering walk (configurable root)      -> numbered tree
-  -> body renderers (text / bullets / table) -> HTML fragments
-  -> wide-table width strategy               -> page-fitting tables
-  -> serialize tree to text/html -> clipboard -> paste into Word
+  -> sheet_to_json({ header: 1, blankrows: false, defval: "", raw: false })   -> raw Grid
+  -> mapper (rowsToGroupedSections | rowsToAttributeSections | rowsToTree)     -> Section tree
+  -> renderTree (renderBody per text / bullets / table)                        -> HTML fragment
+  -> live preview (RenderedPreview, dangerouslySetInnerHTML)
+  -> buildWordHtml + htmlToPlainText -> navigator.clipboard.write             -> paste into Word
 ```
 
-## Finished-MVP walkthrough
+`renderTree` escapes all user-derived text (`& < >`) and omits blank `number`s, so headings render as plain titles today. The JSON view shows the raw Grid instead of the rendered tree.
 
-When complete, the user will:
+## Not currently wired in
 
-1. Paste an Excel block into the app.
-2. The app parses it to raw rows.
-3. A convention mapper turns rows into the section tree (A = section, B = sub, C = body, D = type).
-4. Numbering walks the tree and assigns dotted numbers from a configurable root (start at 6 -> 6, 6.1, 6.2).
-5. Body renderers convert each body to HTML (text, bullets, or table).
-6. Wide tables get a width strategy (transpose or split) so they fit a Word page.
-7. The user copies the result to the clipboard as `text/html`.
-8. Pasting into Word produces native numbered headings and tables.
+- **Numbering.** `lib/numbering.ts` exports `numberTree` (assigns dotted numbers `6`, `6.1`, … from a configurable root, returning a fresh tree). It is fully implemented but **not imported by the UI** — output is intentionally un-numbered. `renderTree` already supports numbers when present.
+- **Wide-table width strategy.** Transpose/split so a wide table fits a Letter page is **not** implemented. It is largely moot for the grouped/per-item views (they emit narrow bullet lists, not tables); it only matters for the A/B/C/D view's `table` bodies. Page-fit today comes from the content being narrow block flow, reinforced by `buildWordHtml`'s `@page` + `overflow-wrap` hints.
+- **`.docx` generation.** Out of scope; export is HTML-on-clipboard only.
 
-Example target output:
+## Clipboard output
 
-```
-6 FRUIT
-6.1 Fruit Description
-   (table or bullets)
-6.2 Fruit Text
-   (table or description)
-```
+`lib/clipboard.ts` wraps the rendered fragment for Word:
+- `buildWordHtml(fragment)` → `<!DOCTYPE html>…<meta charset="utf-8"><style>@page{size:8.5in 11in;margin:1in}body{overflow-wrap:break-word}</style>…<body>{fragment}</body>`. Bare `<h2>/<h3>/<ul>` tags map onto Word's native Heading/List styles; the browser writes the Windows CF_HTML header automatically.
+- `htmlToPlainText(fragment)` → readable `- Field: value` fallback for the `text/plain` flavor.
+
+`PasteInput.copyForWord()` writes a `ClipboardItem` with both flavors via `navigator.clipboard.write`.
 
 ## Pipeline diagram
 
-Blue nodes are **in scope today**; grey nodes are **deferred to later sprints**.
-
 ```mermaid
 flowchart TD
-    subgraph today["In scope today"]
-        A["User pastes Excel block"]
-        B["Paste handler reads text/html"]
-        C["SheetJS XLSX.read parses to sheet"]
-        D["sheet_to_json gives raw rows arrays"]
-        E["JSON preview on screen"]
-    end
-    subgraph later["Deferred to later sprints"]
-        F["Convention mapper: A=section, B=sub, C=body, D=type"]
-        G["Section tree built"]
-        H["Numbering walk (configurable root number)"]
-        I["Body-type detection: text / bullets / table"]
-        J["Body renderers to HTML"]
-        K["Wide-table width strategy (transpose or split)"]
-        L["Serialize tree to text/html"]
-        M["Write to clipboard"]
-        N["User pastes into Word (native headings and tables)"]
-    end
-    A --> B --> C --> D --> E
-    E --> F --> G --> H --> I --> J --> K --> L --> M --> N
+    A["User pastes Excel block"]
+    B["parseClipboard: read text/html or text/plain"]
+    C["SheetJS XLSX.read -> sheet_to_json -> raw Grid"]
+    V{"View mode"}
+    G["rowsToGroupedSections (group by field)"]
+    L["rowsToAttributeSections (fields as bullets)"]
+    S["rowsToTree (A/B/C/D)"]
+    T["Section tree"]
+    R["renderTree + renderBody -> HTML fragment"]
+    P["RenderedPreview (live)"]
+    J["JsonPreview (raw Grid)"]
+    W["buildWordHtml + htmlToPlainText"]
+    X["navigator.clipboard.write -> paste into Word"]
+    A --> B --> C --> V
+    V -->|grouped| G --> T
+    V -->|list| L --> T
+    V -->|sections| S --> T
+    T --> R --> P
+    C -.-> J
+    R --> W --> X
 
-    classDef todayNode fill:#1d4ed8,stroke:#93c5fd,color:#fff;
-    classDef laterNode fill:#374151,stroke:#9ca3af,color:#e5e7eb;
-    class A,B,C,D,E todayNode;
-    class F,G,H,I,J,K,L,M,N laterNode;
+    N["numberTree (dotted numbers) -- implemented, not wired in"]
+    K["wide-table transpose/split -- not implemented"]
+    class N,K deferred;
+    classDef deferred fill:#374151,stroke:#9ca3af,color:#e5e7eb;
 ```

@@ -15,7 +15,7 @@ const geistMono = Geist_Mono({
 export const metadata: Metadata = {
   title: "Excel → Word Sections",
   description:
-    "Convert pasted Excel tables into formatted, numbered Word-document sections.",
+    "Convert pasted Excel tables into readable, Word-ready document sections.",
 };
 
 export default function RootLayout({

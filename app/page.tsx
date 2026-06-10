@@ -8,9 +8,10 @@ export default function Home() {
           Excel &rarr; Word Sections
         </h1>
         <p className="text-foreground/60">
-          Paste a table copied from Excel or Google Sheets to preview it as
-          numbered Word-style sections. Adjust the starting number, or toggle to
-          inspect the raw parsed JSON.
+          Paste a table copied from Excel or Google Sheets to restructure it into
+          Word-ready sections. Group by a field or list fields per item, choose
+          which columns to show, then copy for Word &mdash; or toggle to inspect
+          the raw parsed JSON.
         </p>
       </header>
       <PasteInput />
