@@ -83,6 +83,9 @@ export function PasteInput() {
   const [h1SizeInput, setH1SizeInput] = useState<string>("16");
   const [h2SizeInput, setH2SizeInput] = useState<string>("13");
   const [headingBold, setHeadingBold] = useState<boolean>(false);
+  // Body font is separate (default Calibri) so unstyled body text doesn't fall
+  // back to Times New Roman on a Word paste; headings keep their own font.
+  const [bodyFont, setBodyFont] = useState<string>("Calibri");
   const headingStyle = useMemo<HeadingStyle>(() => {
     const clampPt = (s: string, fallback: number) => {
       const n = parseInt(s, 10);
@@ -186,7 +189,7 @@ export function PasteInput() {
     }
     try {
       const item = new ClipboardItem({
-        "text/html": new Blob([buildWordHtml(html, headingStyle)], {
+        "text/html": new Blob([buildWordHtml(html, headingStyle, bodyFont)], {
           type: "text/html",
         }),
         "text/plain": new Blob([htmlToPlainText(html)], { type: "text/plain" }),
@@ -205,7 +208,7 @@ export function PasteInput() {
   function downloadForWord() {
     const safeName =
       sectionTitle.trim().replace(/[^a-z0-9 _-]/gi, "").trim() || "word-sections";
-    const blob = new Blob([buildWordHtml(html, headingStyle)], {
+    const blob = new Blob([buildWordHtml(html, headingStyle, bodyFont)], {
       type: "application/msword",
     });
     const url = URL.createObjectURL(blob);
@@ -411,10 +414,24 @@ export function PasteInput() {
                 />
               </label>
               <label className="flex items-center gap-1.5">
-                Font
+                Heading font
                 <select
                   value={headingFont}
                   onChange={(e) => setHeadingFont(e.target.value)}
+                  className="rounded-md border border-foreground/20 px-2 py-1 text-sm text-foreground"
+                >
+                  {HEADING_FONTS.map((f) => (
+                    <option key={f} value={f}>
+                      {f}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="flex items-center gap-1.5">
+                Body font
+                <select
+                  value={bodyFont}
+                  onChange={(e) => setBodyFont(e.target.value)}
                   className="rounded-md border border-foreground/20 px-2 py-1 text-sm text-foreground"
                 >
                   {HEADING_FONTS.map((f) => (
@@ -467,6 +484,7 @@ export function PasteInput() {
             <RenderedPreview
               html={html}
               headingStyle={headingStyle}
+              bodyFont={bodyFont}
               emptyHint={
                 layout === "grouped"
                   ? "Pasted, but no groups were produced. The first row is read as headers; you need at least one data row. Pick a 'Group by' column and a label column above, or switch to JSON to inspect the raw grid."

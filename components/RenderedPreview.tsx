@@ -25,10 +25,12 @@ export function RenderedPreview({
   html,
   emptyHint,
   headingStyle,
+  bodyFont,
 }: {
   html: string;
   emptyHint?: string;
   headingStyle: HeadingStyle;
+  bodyFont: string;
 }) {
   if (html === "") {
     return (
@@ -41,12 +43,17 @@ export function RenderedPreview({
 
   const h = headingStyle;
   const weight = h.bold ? 700 : 400;
+  // Body text inherits the container font; headings override it below.
   const css =
     `.ws-preview h2{color:${h.color};font-family:'${h.font}';font-size:${h.h1Size}pt;font-weight:${weight}}` +
     `.ws-preview h3{color:${h.color};font-family:'${h.font}';font-size:${h.h2Size}pt;font-weight:${weight}}`;
 
   return (
-    <div aria-label="Rendered section preview" className={previewClasses}>
+    <div
+      aria-label="Rendered section preview"
+      className={previewClasses}
+      style={{ fontFamily: bodyFont }}
+    >
       <style>{css}</style>
       <div dangerouslySetInnerHTML={{ __html: html }} />
     </div>

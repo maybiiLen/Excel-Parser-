@@ -45,7 +45,11 @@ export type HeadingStyle = {
   bold: boolean;
 };
 
-export function buildWordHtml(fragment: string, heading: HeadingStyle): string {
+export function buildWordHtml(
+  fragment: string,
+  heading: HeadingStyle,
+  bodyFont: string,
+): string {
   const body = fragment
     .replace(/<h2>([\s\S]*?)<\/h2>/g, '<p class="MsoHeading1">$1</p>')
     .replace(/<h3>([\s\S]*?)<\/h3>/g, '<p class="MsoHeading2">$1</p>');
@@ -59,7 +63,9 @@ export function buildWordHtml(fragment: string, heading: HeadingStyle): string {
     `<head><meta charset="utf-8">` +
     `<style>` +
     `@page{size:8.5in 11in;margin:1in}` +
-    `body{overflow-wrap:break-word}` +
+    // Set a body font so Word doesn't fall back to Times New Roman for unstyled
+    // HTML body text. Headings override this with their own font below.
+    `body{overflow-wrap:break-word;font-family:"${bodyFont}"}` +
     `p.MsoHeading1{mso-style-name:"heading 1";mso-outline-level:1;${look(heading.h1Size)}}` +
     `p.MsoHeading2{mso-style-name:"heading 2";mso-outline-level:2;${look(heading.h2Size)}}` +
     `</style>` +
