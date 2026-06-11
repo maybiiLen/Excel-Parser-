@@ -57,47 +57,65 @@ const FALLBACK_LEVEL: LevelStyle = {
  * rows (`<p class="ws-lvl" data-level="N">`) become `MsoPiv*`.
  *
  * The TITLE maps to a Word heading style when `headingStyleName` is set (it
- * carries `mso-style-name:"<name>";mso-outline-level:1` and NO direct font/color,
- * so a "Use Destination Styles" paste adopts the destination document's heading);
- * blank = the app's direct level-1 look. The BODY always uses the app's direct
- * per-level look (color/font/size/bold), so what the preview shows is what Word
- * gets. Body paragraphs are compactly spaced; the app adds the left-indent (and
- * the markers live in the text).
+ * carries `mso-style-name:"<name>";mso-outline-level:1`, so a "Use Destination
+ * Styles" paste adopts the destination document's heading + its numbering);
+ * blank = the app's direct level-1 look.
+ *
+ * The BODY always uses the app's direct per-level look (color/font/size/bold) +
+ * indent + compact spacing, emitted as INLINE formatting on each `<p>` (and `<b>`
+ * for bold) rather than CSS classes. A "Use Destination Styles" paste discards
+ * class/style-name formatting it can't map (it resets unknown classes like
+ * `MsoPiv2` to Normal -- dropping bold and bringing Normal's space-after) but
+ * KEEPS inline direct formatting, so the per-level look + tight spacing survive
+ * and match the live preview.
  */
 export function buildWordHtml(
   fragment: string,
   heading: HeadingStyle,
   bodyFont: string,
 ): string {
-  const body = fragment
-    // Title -> MsoTitle; nested rows -> MsoPiv{N}. The N rewrite is anchored to a
-    // 1-9 digit so it never matches a bare <p>.
-    .replace(/<p class="ws-title">([\s\S]*?)<\/p>/g, '<p class="MsoTitle">$1</p>')
-    .replace(
-      /<p class="ws-lvl" data-level="([1-9])">([\s\S]*?)<\/p>/g,
-      '<p class="MsoPiv$1">$2</p>',
-    );
-  const lookOf = (lv: LevelStyle) =>
-    `color:${lv.color};font-family:"${lv.font}";font-size:${lv.size}pt;font-weight:${lv.bold ? "bold" : "normal"}`;
   const lvl = (i: number) => heading.levels[i] ?? FALLBACK_LEVEL;
   const step = heading.indentStep ?? 0.2;
   const headingName = sanitizeStyleName(heading.headingStyleName ?? "");
-  // Compact spacing: a 1.25 line (matching the preview's leading-tight) with no
-  // space before/after, so paragraphs sit tight under one another.
-  const single = "line-height:1.25;margin-top:0;margin-bottom:0";
-  // Title: a Word heading style when named (template controls the look + the one
-  // outline entry), else the direct level-1 look.
+
+  // Inline direct formatting for an app-styled paragraph: level index `i`, indented
+  // for render-level `n` (1-based). Inline (not a CSS class) so it survives a
+  // "Use Destination Styles" paste. Compact spacing = no space before/after +
+  // a 1.15 line, so paragraphs sit tight like the preview.
+  const directStyle = (i: number, n: number) => {
+    const s = lvl(i);
+    const indent = ((n - 1) * step).toFixed(2);
+    return (
+      `margin-top:0in;margin-bottom:0in;margin-left:${indent}in;line-height:115%;` +
+      `color:${s.color};font-family:'${s.font}';font-size:${s.size}pt`
+    );
+  };
+  // Bold is a <b> run (direct character formatting), which a "Use Destination
+  // Styles" paste keeps -- unlike a class-level font-weight, which it discards.
+  const wrapBold = (i: number, content: string) =>
+    lvl(i).bold ? `<b>${content}</b>` : content;
+
+  const body = fragment
+    // Title: a mapped Word heading (class + mso rule) when named, else the app's
+    // direct level-1 look inline.
+    .replace(/<p class="ws-title">([\s\S]*?)<\/p>/g, (_m, content: string) =>
+      headingName
+        ? `<p class="MsoTitle">${content}</p>`
+        : `<p style="${directStyle(0, 1)}">${wrapBold(0, content)}</p>`,
+    )
+    // Nested rows: always the app's per-level look, inline (+ <b> when bold).
+    .replace(
+      /<p class="ws-lvl" data-level="([1-9])">([\s\S]*?)<\/p>/g,
+      (_m, d: string, content: string) => {
+        const i = Number(d) - 1;
+        return `<p style="${directStyle(i, Number(d))}">${wrapBold(i, content)}</p>`;
+      },
+    );
+
+  // The only CSS rule needed is the mapped-title style; everything else is inline.
   const titleRule = headingName
     ? `p.MsoTitle{mso-style-name:"${headingName}";mso-outline-level:1}`
-    : `p.MsoTitle{${lookOf(lvl(0))};${single}}`;
-  // Nested rows (levels 1-9): always the app's per-level direct look (color/font/
-  // size/bold) + the growing left indent + compact spacing. No Word-style mapping,
-  // so the bold and spacing the preview shows are exactly what Word receives.
-  const pivotRules = Array.from({ length: 9 }, (_, i) => {
-    const n = i + 1;
-    const pivLeft = `margin-left:${((n - 1) * step).toFixed(2)}in`;
-    return `p.MsoPiv${n}{${lookOf(lvl(i))};${pivLeft};${single}}`;
-  }).join("");
+    : "";
   return (
     `<html xmlns:o="urn:schemas-microsoft-com:office:office" ` +
     `xmlns:w="urn:schemas-microsoft-com:office:word" ` +
@@ -105,11 +123,10 @@ export function buildWordHtml(
     `<head><meta charset="utf-8">` +
     `<style>` +
     `@page{size:8.5in 11in;margin:1in}` +
-    // Body font (so Word doesn't fall back to Times New Roman). Per-paragraph
-    // spacing/look is set by the title + pivot rules below.
+    // Body font fallback (so Word doesn't drop to Times New Roman); each paragraph
+    // also sets its own font inline.
     `body{overflow-wrap:break-word;font-family:"${bodyFont}"}` +
     titleRule +
-    pivotRules +
     `</style>` +
     `</head><body>${body}</body></html>`
   );

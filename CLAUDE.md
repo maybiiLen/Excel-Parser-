@@ -36,7 +36,7 @@ Pipeline (per table): paste → `parseClipboard` (Grid) → `rowsToPivotTree` (`
 - `lib/parser.ts` — SheetJS clipboard → Grid (`parseClipboard`)
 - `lib/mapper.ts` — `cellToString` + `rowsToPivotTree(rows, levels)` (ordered indent buckets → `PivotNode[]`; each bucket is one level holding ≥1 field, merged by a composite key)
 - `lib/renderers.ts` — `renderPivotTree(nodes, title?, markers?)` (optional title → a plain level-1 row; each node's `lines` → `<p class="ws-lvl" data-level="N">`, marker on the first line only; per-level markers; depth clamped at 9); `MarkerKind`/`markerText`/`defaultMarker`; escapes user text. Private `escapeHtml` + `toAlpha`/`toRoman`
-- `lib/clipboard.ts` — `HeadingStyle` (`{ levels, indentStep, headingStyleName }`)/`LevelStyle` types; `buildWordHtml` (Word doc wrapper: `ws-title`→`MsoTitle`, `data-level`→`MsoPiv1..9`; the title carries `mso-style-name:"<heading>"`+`mso-outline-level:1` when `headingStyleName` is set (else the direct level-1 look); the body always carries the direct per-level look + indent + compact spacing; `sanitizeStyleName`) + `htmlToPlainText`
+- `lib/clipboard.ts` — `HeadingStyle` (`{ levels, indentStep, headingStyleName }`)/`LevelStyle` types; `buildWordHtml` (Word doc wrapper: the title becomes `<p class="MsoTitle">` + a `mso-style-name:"<heading>"`+`mso-outline-level:1` rule when `headingStyleName` is set (else inline level-1 look); each body row becomes a `<p>` with **inline** direct formatting (per-level color/font/size + indent + compact spacing) and a `<b>` wrap when that level is bold — inline so it survives a "Use Destination Styles" paste; `sanitizeStyleName`) + `htmlToPlainText`
 - `docs/` — OVERVIEW, ARCHITECTURE, ROADMAP
 
 ## Data Model
