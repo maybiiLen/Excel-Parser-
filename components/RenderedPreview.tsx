@@ -17,7 +17,7 @@ import type { HeadingStyle } from "@/lib/clipboard";
  */
 const previewClasses =
   "ws-preview rounded-lg border border-foreground/15 bg-foreground/[0.03] p-4 text-sm " +
-  "[&_h2]:mt-4 [&_[data-level]]:mt-2 [&_p]:my-2";
+  "[&_.ws-title]:mt-1 [&_[data-level]]:mt-1 [&_p]:my-0.5 [&_p]:leading-tight";
 
 export function RenderedPreview({
   html,
@@ -39,21 +39,25 @@ export function RenderedPreview({
     );
   }
 
-  // Every heading's look comes from headingStyle.levels (the single style
-  // source). Level 1 (index 0) styles the title (h2) + pivot level 1; levels 2-9
-  // style the nested rows by depth. Indent applies to the pivot [data-level]
-  // rules only.
-  const FALLBACK = { color: "#2F5496", font: "Calibri Light", size: 13, bold: false };
+  // Approximate look from headingStyle.levels (level 1 = the title row; levels
+  // 2-9 the nested rows by depth). When a Word style name is mapped the real
+  // template look only shows on paste; this preview uses the per-level look.
+  const FALLBACK = { color: "#000000", font: "Arial", size: 11, bold: false };
+  const step = headingStyle.indentStep ?? 0.2;
   const rule = (sel: string, i: number, indentIn: string) => {
     const lv = headingStyle.levels[i] ?? FALLBACK;
     const margin = indentIn ? `;margin-left:${indentIn}in` : "";
     return `.ws-preview ${sel}{color:${lv.color};font-family:'${lv.font}';font-size:${lv.size}pt;font-weight:${lv.bold ? 700 : 400}${margin}}`;
   };
-  const levelCss = Array.from({ length: 9 }, (_, i) =>
-    rule(`[data-level="${i + 1}"]`, i, (i * 0.2).toFixed(1)),
-  ).join("");
-  // Body text inherits the container font; the title (h2) overrides it below.
-  const css = rule("h2", 0, "") + levelCss;
+  // Title (level 1, no indent); nested rows (per-level look + (n-1)*step indent);
+  // detail rows (margin only, inherit body font, n*step indent).
+  const css =
+    rule(".ws-title", 0, "") +
+    Array.from({ length: 9 }, (_, i) => {
+      const piv = rule(`[data-level="${i + 1}"]`, i, (i * step).toFixed(2));
+      const det = `.ws-preview [data-detail="${i + 1}"]{margin-left:${((i + 1) * step).toFixed(2)}in}`;
+      return piv + det;
+    }).join("");
 
   return (
     <div

@@ -3,7 +3,7 @@
 // without a parent <-> child import cycle.
 
 import { rowsToPivotTree } from "@/lib/mapper";
-import { renderPivotTree } from "@/lib/renderers";
+import { renderPivotTree, type MarkerKind } from "@/lib/renderers";
 import type { Grid } from "@/lib/types";
 
 /** One pasted table: its grid plus the per-table pivot config the user tweaks. */
@@ -15,8 +15,8 @@ export type TableState = {
   selectedCols: Set<number>;
   /** Ordered columns the pivot nests rows by (selection order). */
   pivotOrder: number[];
-  /** Number the nested levels (1./a./i. …). */
-  pivotNumbered: boolean;
+  /** Marker style per nesting depth (index = depth − 1; sparse → default cycle). */
+  markers: MarkerKind[];
   /** Optional title; the one Word heading, above the nested rows. */
   sectionTitle: string;
 };
@@ -44,9 +44,5 @@ export function pivotDetailColumnsOf(t: TableState): number[] {
 export function tableToHtml(t: TableState): string {
   const tree = rowsToPivotTree(t.grid, t.pivotOrder, pivotDetailColumnsOf(t));
   if (tree.length === 0) return "";
-  return renderPivotTree(
-    tree,
-    t.sectionTitle.trim() || undefined,
-    t.pivotNumbered,
-  );
+  return renderPivotTree(tree, t.sectionTitle.trim() || undefined, t.markers);
 }

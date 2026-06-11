@@ -3,9 +3,23 @@
 import { memo, useMemo, useState } from "react";
 import { buildWordHtml, htmlToPlainText } from "@/lib/clipboard";
 import type { HeadingStyle } from "@/lib/clipboard";
+import { defaultMarker, type MarkerKind } from "@/lib/renderers";
 import { tableToHtml, type TableState } from "./tableModel";
 import { JsonPreview } from "./JsonPreview";
 import { RenderedPreview } from "./RenderedPreview";
+
+/** Marker styles offered per nesting level, with a sample label. */
+const MARKER_OPTIONS: { kind: MarkerKind; label: string }[] = [
+  { kind: "decimal", label: "1." },
+  { kind: "paren", label: "1)" },
+  { kind: "upperAlpha", label: "A." },
+  { kind: "lowerAlpha", label: "a." },
+  { kind: "upperRoman", label: "I." },
+  { kind: "lowerRoman", label: "i." },
+  { kind: "bullet", label: "• bullet" },
+  { kind: "dash", label: "– dash" },
+  { kind: "none", label: "None" },
+];
 
 type Props = {
   table: TableState;
@@ -203,15 +217,38 @@ function TableCardInner({ table, headingStyle, bodyFont, onChange }: Props) {
               )}
             </div>
           )}
-          <label className="flex items-center gap-1.5 text-sm text-foreground/70">
-            <input
-              type="checkbox"
-              checked={table.pivotNumbered}
-              onChange={(e) => onChange({ pivotNumbered: e.target.checked })}
-            />
-            Number levels{" "}
-            <span className="text-foreground/40">(1., a., i. …)</span>
-          </label>
+          {pivotOrder.length > 0 && (
+            <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 text-sm text-foreground/70">
+              <span className="text-foreground/60">
+                Markers{" "}
+                <span className="text-foreground/40">(per nesting level)</span>:
+              </span>
+              {pivotOrder.map((_, i) => (
+                <label
+                  key={i}
+                  className="flex items-center gap-1.5 text-xs text-foreground/60"
+                >
+                  Lv {i + 1}
+                  <select
+                    value={table.markers[i] ?? defaultMarker(i + 1)}
+                    onChange={(e) => {
+                      const next = [...table.markers];
+                      next[i] = e.target.value as MarkerKind;
+                      onChange({ markers: next });
+                    }}
+                    aria-label={`Marker for nesting level ${i + 1}`}
+                    className="rounded-md border border-foreground/20 px-2 py-1 text-sm text-foreground"
+                  >
+                    {MARKER_OPTIONS.map((o) => (
+                      <option key={o.kind} value={o.kind}>
+                        {o.label}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              ))}
+            </div>
+          )}
         </div>
       )}
 
