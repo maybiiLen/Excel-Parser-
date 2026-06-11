@@ -1,29 +1,22 @@
-# Excel &rarr; Word Sections
+# Excel &rarr; Word Pivot
 
-Convert pasted Excel data into **Word-ready document sections**. Paste one or more tables copied from Excel or Google Sheets; the app restructures each into a section tree, renders it as HTML, and copies it to the clipboard so it pastes into Microsoft Word as native headings and bullet lists.
+Convert pasted Excel data into a **Word-ready nested outline**. Paste one or more tables copied from Excel or Google Sheets; the app restructures each into an Excel-pivot-style hierarchy and copies it to the clipboard so it pastes into Microsoft Word.
 
 ## Why
 
-Wide Excel tables don't fit an 8.5" x 11" Word page — columns bleed off the edge and the table becomes unreadable. Rather than shrink or split the grid, this app turns one wide table into a sequence of readable sections that flow down the page (a heading, then a short bullet list), so it fits.
+Wide Excel tables don't fit an 8.5" x 11" Word page — columns bleed off the edge and the table becomes unreadable. Rather than shrink or split the grid, this app turns one wide table into a narrow, nested outline (group by an ordered list of fields; the rest become detail lines under each item) that flows down the page.
 
 ## Status
 
-**Working end to end:** paste → parse (SheetJS) → map → render → live preview → **Copy/Download for Word**. Paste several tables (managed in a tab strip), choose each table's layout and columns, style headings once for all tables, and export each table or all of them at once. See the [roadmap](./docs/ROADMAP.md) for what's intentionally not wired in (wide-table transpose, `.docx`).
+**Working end to end:** paste → parse (SheetJS) → nest → render → live preview → **Copy for Word**. Paste several tables (managed in a tab strip), configure each table's pivot, style the levels once for all tables, and copy each table or all of them at once. See the [roadmap](./docs/ROADMAP.md) for what's out of scope (`.docx`).
 
-## Views
+## The pivot view
 
-Each table picks its own layout:
-
-- **Grouped by field** (default) — group rows by a chosen field; each value is a heading, members are bullets.
-- **Fields as bullets** — one section per row; chosen fields as `Field: value` bullets.
-- **Pivot (nested rows)** — Excel "Rows area": pick fields in order; rows nest by that order (shared paths merge). An optional title is the only Word heading; the nested rows are indented body text (they don't clutter Word's outline).
-- **A/B/C/D sections** — the original position convention (A = section, B = subsection, C = body, D = type).
-
-A field checklist controls which columns show, and a **View JSON** toggle inspects the raw parsed grid. Grouped/per-item tables can be slotted into a document under a numbered, titled section (e.g. `5 Fruit Database` → 5.1, 5.2, …).
+Pick an ordered list of **Nest by** fields; rows nest by that order (field 1 = outermost) and shared value-paths **merge**. Each nested row reads `Field name: value`. A **Detail fields** checklist picks the remaining columns to show as flat `Field: value` lines under each item. A **Number levels** toggle prefixes `1.`/`a.`/`i.` markers by depth. An optional **Section title** is the only Word heading (Heading 1); the nested rows + details are indented body text, so they don't clutter Word's navigation outline. A **View JSON** toggle inspects the raw parsed grid.
 
 ## Multiple tables
 
-Paste table after table — each becomes a card in a horizontal **tab strip** (one edited at a time, cap 100). One shared **per-level** styling panel (Level 1 = top headings, Level 2 = subsections, …) applies to every table; each table keeps its own layout, columns, and title. Export per-table (**Copy/Download for Word**) or everything at once (**Copy all / Download all**).
+Paste table after table — each becomes a card in a horizontal **tab strip** (one edited at a time, cap 100). One shared **Heading levels** styling panel (Level 1 = the title, Levels 2-9 = the nested rows by depth) + a Body font apply to every table; each table keeps its own fields and title. Export per-table (**Copy for Word**) or everything at once (**Copy all**).
 
 ## Stack
 
@@ -39,12 +32,12 @@ npm install
 npm run dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000), click the paste zone, and press **Ctrl/Cmd + V** with a cell range copied from Excel or Google Sheets. The data renders as sections in the live preview; click **Copy for Word** and paste into a Word document.
+Open [http://localhost:3000](http://localhost:3000), click the paste zone, and press **Ctrl/Cmd + V** with a cell range copied from Excel or Google Sheets. Pick your nest + detail fields; the live preview updates. Click **Copy for Word** and paste into a Word document (with *Use Destination Styles* so the title maps to your Heading 1).
 
 ## Docs
 
 - [docs/OVERVIEW.md](./docs/OVERVIEW.md) — problem, goals, stack, status
-- [docs/ARCHITECTURE.md](./docs/ARCHITECTURE.md) — data model, view modes, pipeline diagram
+- [docs/ARCHITECTURE.md](./docs/ARCHITECTURE.md) — data model, pivot, pipeline diagram
 - [docs/ROADMAP.md](./docs/ROADMAP.md) — build order & status
 
 ## Project layout
@@ -52,17 +45,16 @@ Open [http://localhost:3000](http://localhost:3000), click the paste zone, and p
 ```
 app/                 App Router pages (home renders the paste view)
 components/
-  PasteInput.tsx     parent: paste/append, tables[] + shared styles, tab strip, Copy/Download all
-  TableCard.tsx      one table's editor + preview + per-table Copy/Download
-  tableModel.ts      TableState / Layout + tableToHtml (per-table map->render)
-  RenderedPreview.tsx renders the section HTML (live preview; h2/h3 + pivot data-level CSS)
+  PasteInput.tsx     parent: paste/append, tables[] + shared styles, tab strip, Copy all
+  TableCard.tsx      one table's pivot editor + preview + per-table Copy for Word
+  tableModel.ts      TableState + tableToHtml (per-table nest->render) + pivotDetailColumnsOf
+  RenderedPreview.tsx renders the pivot HTML (live preview; h2 title + [data-level] CSS)
   JsonPreview.tsx    shows the raw parsed Grid as JSON
 lib/
-  types.ts           Section / Subsection / Body / PivotNode model + raw Grid
+  types.ts           PivotNode model + raw Grid
   parser.ts          SheetJS clipboard -> Grid
-  mapper.ts          Grid -> tree (rowsToTree / rowsToAttributeSections / rowsToGroupedSections / rowsToPivotTree)
-  numbering.ts       wrapInNumberedSection: wrap grouped/per-item output in a numbered, titled section
-  renderers.ts       tree -> HTML fragment (renderTree / renderBody / renderPivotTree)
+  mapper.ts          rowsToPivotTree (Grid -> PivotNode[]) + cellToString
+  renderers.ts       renderPivotTree (tree -> HTML fragment) + numbering helpers
   clipboard.ts       Word-friendly clipboard wrapper (buildWordHtml / htmlToPlainText; HeadingStyle / LevelStyle)
 docs/                OVERVIEW, ARCHITECTURE, ROADMAP
 ```

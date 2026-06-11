@@ -2,90 +2,24 @@
 // TableCard. Lives in its own module so both can import the type and helpers
 // without a parent <-> child import cycle.
 
-import {
-  rowsToTree,
-  rowsToAttributeSections,
-  rowsToGroupedSections,
-  rowsToPivotTree,
-} from "@/lib/mapper";
-import { wrapInNumberedSection } from "@/lib/numbering";
-import { renderTree, renderPivotTree } from "@/lib/renderers";
+import { rowsToPivotTree } from "@/lib/mapper";
+import { renderPivotTree } from "@/lib/renderers";
 import type { Grid } from "@/lib/types";
 
-export type Layout = "list" | "grouped" | "sections" | "pivot";
-
-/** One pasted table: its grid plus the per-table config the user can tweak. */
+/** One pasted table: its grid plus the per-table pivot config the user tweaks. */
 export type TableState = {
   /** Stable id from a monotonic counter; used as the React key. */
   id: string;
   grid: Grid;
-  layout: Layout;
-  titleCol: number;
-  groupCol: number;
+  /** Columns checked to show as detail lines under each leaf item. */
   selectedCols: Set<number>;
-  /** Ordered columns the pivot view nests rows by (selection order). */
+  /** Ordered columns the pivot nests rows by (selection order). */
   pivotOrder: number[];
-  /** Pivot: number the nested levels (1./a./i. …). */
+  /** Number the nested levels (1./a./i. …). */
   pivotNumbered: boolean;
-  /** Wrapping section number, held as a raw string so it can be backspaced. */
-  sectionNumberInput: string;
+  /** Optional title; the one Word heading, above the nested rows. */
   sectionTitle: string;
 };
-
-/** First header containing "name" (case-insensitive), else the first column. */
-export function pickDefaultTitleCol(rows: Grid): number {
-  const header = rows[0] ?? [];
-  const i = header.findIndex(
-    (c) => typeof c === "string" && c.toLowerCase().includes("name"),
-  );
-  return i >= 0 ? i : 0;
-}
-
-const GROUP_KEYWORDS = [
-  "origin", "season", "type", "category", "status", "risk", "level",
-  "color", "region", "class", "group", "storage", "method",
-];
-
-/** First header matching a category-ish keyword, else first column != titleCol. */
-export function pickDefaultGroupCol(rows: Grid, titleCol: number): number {
-  const header = (rows[0] ?? []).map((c) =>
-    typeof c === "string" ? c.toLowerCase() : "",
-  );
-  for (let i = 0; i < header.length; i++) {
-    if (i !== titleCol && GROUP_KEYWORDS.some((k) => header[i].includes(k))) {
-      return i;
-    }
-  }
-  for (let i = 0; i < header.length; i++) {
-    if (i !== titleCol) return i;
-  }
-  return titleCol;
-}
-
-/** Section number used for output (empty/invalid -> 1), derived from the input. */
-export function sectionNumberOf(t: TableState): number {
-  const n = parseInt(t.sectionNumberInput, 10);
-  return Number.isFinite(n) && n > 0 ? n : 1;
-}
-
-/**
- * Columns shown as bullets / parenthetical extras, in column order: checked,
- * minus the title (label) column, and -- in grouped mode -- the group column.
- */
-export function fieldColumnsOf(t: TableState): number[] {
-  const width = t.grid[0]?.length ?? 0;
-  const cols: number[] = [];
-  for (let i = 0; i < width; i++) {
-    if (
-      i !== t.titleCol &&
-      (t.layout !== "grouped" || i !== t.groupCol) &&
-      t.selectedCols.has(i)
-    ) {
-      cols.push(i);
-    }
-  }
-  return cols;
-}
 
 /**
  * Pivot detail columns, in column order: checked (`selectedCols`) but NOT one of
@@ -102,43 +36,17 @@ export function pivotDetailColumnsOf(t: TableState): number[] {
 }
 
 /**
- * parse -> map -> (wrap in a numbered section) -> render for one table. The
- * grouped and per-item views are wrapped under one numbered, titled heading
- * (5 Fruit Database -> 5.1, 5.2, ...); A/B/C/D is left as-is. Pure: the single
- * source of truth used by both the card preview and the combined export.
+ * parse -> nest -> render for one table. An optional Section title is the ONLY
+ * heading (rendered as `<h2>`); the nested rows + details are styled body
+ * paragraphs beneath it. Empty-guard first so a title never renders over nothing.
+ * Pure: the single source used by both the card preview and the combined export.
  */
 export function tableToHtml(t: TableState): string {
-  // Pivot: plain, un-numbered nested rows (not wrapped in a numbered section like
-  // the grouped/per-item views). An optional Section title is the ONLY heading
-  // (rendered as <h2>); the nested rows are styled body paragraphs beneath it.
-  // Guard the empty tree first so a title never renders over nothing.
-  if (t.layout === "pivot") {
-    const tree = rowsToPivotTree(t.grid, t.pivotOrder, pivotDetailColumnsOf(t));
-    if (tree.length === 0) return "";
-    return renderPivotTree(
-      tree,
-      t.sectionTitle.trim() || undefined,
-      t.pivotNumbered,
-    );
-  }
-  const fieldColumns = fieldColumnsOf(t);
-  const num = sectionNumberOf(t);
-  const title = t.sectionTitle.trim();
-  let tree;
-  if (t.layout === "list") {
-    tree = wrapInNumberedSection(
-      rowsToAttributeSections(t.grid, t.titleCol, fieldColumns),
-      num,
-      title,
-    );
-  } else if (t.layout === "grouped") {
-    tree = wrapInNumberedSection(
-      rowsToGroupedSections(t.grid, t.groupCol, t.titleCol, fieldColumns),
-      num,
-      title,
-    );
-  } else {
-    tree = rowsToTree(t.grid);
-  }
-  return renderTree(tree);
+  const tree = rowsToPivotTree(t.grid, t.pivotOrder, pivotDetailColumnsOf(t));
+  if (tree.length === 0) return "";
+  return renderPivotTree(
+    tree,
+    t.sectionTitle.trim() || undefined,
+    t.pivotNumbered,
+  );
 }

@@ -4,13 +4,7 @@ import { useMemo, useRef, useState, type ClipboardEvent } from "react";
 import { parseClipboard } from "@/lib/parser";
 import { buildWordHtml, htmlToPlainText } from "@/lib/clipboard";
 import type { HeadingStyle, LevelStyle } from "@/lib/clipboard";
-import {
-  pickDefaultTitleCol,
-  pickDefaultGroupCol,
-  sectionNumberOf,
-  tableToHtml,
-  type TableState,
-} from "./tableModel";
+import { tableToHtml, type TableState } from "./tableModel";
 import { TableCard } from "./TableCard";
 
 const HEADING_FONTS = [
@@ -53,10 +47,10 @@ export function PasteInput() {
   // New Roman on a Word paste. Separate from the per-level heading look.
   const [bodyFont, setBodyFont] = useState<string>("Calibri");
   // The single heading-style source, shared across every table: per-level look
-  // (Level 1 = every top heading, Level 2 = subsections, Levels 3-9 = deeper
-  // pivot levels). SPARSE -- an index is written only when that level is edited;
-  // untouched levels use DEFAULT_LEVEL (so they all start identical; "Reset
-  // levels" clears this back to []). Sticky, even across "Clear all".
+  // (Level 1 = the pivot title, Levels 2-9 = the nested rows by depth). SPARSE --
+  // an index is written only when that level is edited; untouched levels use
+  // DEFAULT_LEVEL (so they all start identical; "Reset levels" clears this back
+  // to []). Sticky, even across "Clear all".
   const [levelStyles, setLevelStyles] = useState<LevelInput[]>([]);
   const headingStyle = useMemo<HeadingStyle>(() => {
     const clampPt = (s: string, fallback: number) => {
@@ -102,25 +96,16 @@ export function PasteInput() {
         );
         return;
       }
-      const t = pickDefaultTitleCol(rows);
       const id = `t${++idRef.current}`;
-      setTables((prev) => {
-        const last = prev[prev.length - 1];
-        const nextNumber = last ? String(sectionNumberOf(last) + 1) : "1";
-        const next: TableState = {
-          id,
-          grid: rows,
-          layout: "grouped",
-          titleCol: t,
-          groupCol: pickDefaultGroupCol(rows, t),
-          selectedCols: new Set((rows[0] ?? []).map((_, i) => i)), // all fields on
-          pivotOrder: [],
-          pivotNumbered: true,
-          sectionNumberInput: nextNumber,
-          sectionTitle: "",
-        };
-        return [...prev, next];
-      });
+      const next: TableState = {
+        id,
+        grid: rows,
+        selectedCols: new Set((rows[0] ?? []).map((_, i) => i)), // all fields on
+        pivotOrder: [],
+        pivotNumbered: true,
+        sectionTitle: "",
+      };
+      setTables((prev) => [...prev, next]);
       setActiveId(id); // open the just-pasted table
       setError(null);
     } catch (err) {
@@ -154,9 +139,9 @@ export function PasteInput() {
   }
 
   // Combined export: concatenate every table's fragment and wrap ONCE. Valid
-  // because buildWordHtml's heading rewrites are global and it emits a single
-  // @page rule, so the whole stack becomes one Word doc (sections in paste
-  // order). Built synchronously before any await to keep the user gesture.
+  // because buildWordHtml's rewrites are global and it emits a single @page rule,
+  // so the whole stack becomes one Word doc (tables in paste order). Built
+  // synchronously before any await to keep the user gesture.
   async function copyAll() {
     if (typeof ClipboardItem === "undefined" || !navigator.clipboard?.write) {
       setCopyAllState("error");
@@ -181,39 +166,18 @@ export function PasteInput() {
     setTimeout(() => setCopyAllState("idle"), 2000);
   }
 
-  function downloadAll() {
-    const combined = tables.map(tableToHtml).join("\n");
-    const blob = new Blob([buildWordHtml(combined, headingStyle, bodyFont)], {
-      type: "application/msword",
-    });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = "word-sections.doc";
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
-    URL.revokeObjectURL(url);
-  }
-
   const atLimit = tables.length >= MAX_TABLES;
   // The open tab; fall back to the first table if the id ever goes stale.
   const activeTable = tables.find((t) => t.id === activeId) ?? tables[0] ?? null;
-  const activeIndex = activeTable
-    ? tables.findIndex((t) => t.id === activeTable.id)
-    : -1;
 
-  // Show one level row per level actually in use across all tables: a pivot uses
-  // its field count (+1 for a title, which is level 1); every other view uses 2
-  // (section + subsection). Clamped to Word's 9-level max.
+  // One level row per depth actually in use across all pivots: field count + 1
+  // for a title (the title is level 1). Clamped to Word's 9-level max.
   const maxDepth = Math.min(
     9,
     Math.max(
       1,
-      ...tables.map((t) =>
-        t.layout === "pivot"
-          ? t.pivotOrder.length + (t.sectionTitle.trim() ? 1 : 0)
-          : 2,
+      ...tables.map(
+        (t) => t.pivotOrder.length + (t.sectionTitle.trim() ? 1 : 0),
       ),
     ),
   );
@@ -271,7 +235,7 @@ export function PasteInput() {
               <button
                 type="button"
                 onClick={copyAll}
-                title="Copies every table as one Word doc (sections stacked in paste order)."
+                title="Copies every table as one Word doc (stacked in paste order)."
                 className="rounded-md border border-foreground/20 px-3 py-1 text-xs font-medium transition-colors hover:bg-foreground/5"
               >
                 {copyAllState === "copied"
@@ -279,14 +243,6 @@ export function PasteInput() {
                   : copyAllState === "error"
                     ? "Copy failed"
                     : "Copy all"}
-              </button>
-              <button
-                type="button"
-                onClick={downloadAll}
-                title="Downloads one .doc containing every table, stacked in paste order."
-                className="rounded-md border border-foreground/20 px-3 py-1 text-xs font-medium transition-colors hover:bg-foreground/5"
-              >
-                Download all
               </button>
             </div>
             <button
@@ -300,10 +256,9 @@ export function PasteInput() {
 
           <p className="text-xs text-foreground/50">
             Getting into Word: paste with <strong>Use Destination Styles</strong>{" "}
-            so headings match your document (set it as the default under Word →
-            Options → Advanced → &ldquo;Pasting from other programs&rdquo;), or{" "}
-            <strong>Download for Word</strong>, open the file, and copy it in
-            (Word&nbsp;→&nbsp;Word keeps formatting).
+            so the title matches your document&rsquo;s Heading&nbsp;1 (set it as
+            the default under Word → Options → Advanced → &ldquo;Pasting from other
+            programs&rdquo;).
           </p>
 
           <div className="flex flex-col gap-2 rounded-lg border border-foreground/15 bg-foreground/[0.02] p-3 text-sm text-foreground/70">
@@ -440,7 +395,6 @@ export function PasteInput() {
             <TableCard
               key={activeTable.id}
               table={activeTable}
-              index={activeIndex}
               headingStyle={headingStyle}
               bodyFont={bodyFont}
               onChange={(patch) => patchTable(activeTable.id, patch)}

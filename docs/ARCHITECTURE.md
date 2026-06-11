@@ -2,65 +2,23 @@
 
 ## Core data model
 
-The product is a **section tree**, not a flat table. Everything is built around this shape (see [`lib/types.ts`](../lib/types.ts)):
+The product is a recursive **pivot tree**, not a flat table (see [`lib/types.ts`](../lib/types.ts)):
 
 ```ts
-Section {
-  number: string        // "5" for the wrapper heading (grouped/per-item); "" for A/B/C/D
-  title: string         // "Fruit Database" (wrapper) / a group value / an item name
-  children: Subsection[]
-  body?: Body            // optional: content rendered directly under the section heading
-}
-
-Subsection {
-  number: string        // "5.1", "5.2", … for wrapped views; "" for A/B/C/D
-  title: string
-  body: Body
-}
-
-Body =
-  | { type: "text", content: string }
-  | { type: "bullets", items: string[] }
-  | { type: "table", rows: string[][] }
-
-PivotNode {              // pivot view only — arbitrary depth
-  title: string
-  children: PivotNode[]  // leaf = []
-  details?: string[]     // leaf "Field: value" detail lines (body text)
+PivotNode {
+  title: string          // "Item Name: Apple" (Field name: value)
+  children: PivotNode[]   // leaf = []
+  details?: string[]      // leaf "Field: value" detail lines (body text)
 }
 ```
 
-`Section.body` lets a section carry content directly (used by the grouped and per-item views, which emit one bullet list per section). The A/B/C/D view instead puts bodies on `Subsection`s. The **pivot** view is the exception to the 2-level model: it builds a recursive `PivotNode` tree (no body, no number) of arbitrary depth, rendered as indented body paragraphs with only the optional title as a heading. The parser produces a raw **Grid** (`Cell[][]`) which a mapper turns into the tree.
+The parser produces a raw **Grid** (`Cell[][]`); `rowsToPivotTree` turns it into a `PivotNode` tree of arbitrary depth. Shared value-paths merge; a leaf may carry `details` (the non-nested fields). Only the optional title is a heading — everything else is styled body text.
 
-Multiple pasted tables are held as a `TableState[]` in `components/PasteInput.tsx`; each `TableState` carries its own grid, layout, column choices, pivot order, and title. `components/tableModel.ts` `tableToHtml(t)` runs the per-table map→render pipeline and is the single source used by both the card preview and the combined export.
+Multiple pasted tables are held as a `TableState[]` in `components/PasteInput.tsx`; each `TableState` carries its own grid, `pivotOrder` (nesting fields), `selectedCols` (detail fields), `pivotNumbered`, and `sectionTitle`. `components/tableModel.ts` `tableToHtml(t)` runs the per-table nest→render pipeline and is the single source used by both the card preview and the combined export.
 
-## View modes (how a Grid becomes a tree)
+## The pivot view (how a Grid becomes a tree) — `rowsToPivotTree`
 
-Each table's Grid is mapped to a tree by one of four mappers, chosen per table in its card (`components/TableCard.tsx`). Default is **Grouped by field**.
-
-### 1. Grouped by field — `rowsToGroupedSections` (default)
-Row 0 is field names. Rows are grouped by a chosen **group column**; each distinct value becomes a section heading, and the rows that share it are listed as bullets. Each bullet is a **label column** value plus, optionally, a parenthetical of other checked fields.
-
-```
-Brazil
-- Apple (Winter, Low)
-- Raspberry (Winter, Low)
-USA
-- Grape (Year-round, High)
-```
-Blank group cell → `(blank)` bucket; blank label → `(untitled)` (no row is dropped). First-seen group order and within-group row order are preserved.
-
-### 2. Fields as bullets — `rowsToAttributeSections` (per-item / transpose)
-Row 0 is field names. Each later row becomes a section titled by a chosen **title column**, with the other selected columns as `Field: value` bullets.
-
-```
-Apple
-- ID: UPC86921
-- Origin: Brazil
-```
-
-### 3. Pivot (nested rows) — `rowsToPivotTree`
-Row 0 is field names. You pick an **ordered** list of **nesting** fields; rows nest by that order — field 1 is the outermost grouping, within each group nest by field 2, and so on. Each level is labelled `Field name: value` (the field name comes from that column's header). Rows sharing a value-path **merge** (a pivot with only Row fields, no Values), so duplicate paths collapse. A separate **Detail fields** checklist picks columns shown as flat `Field: value` lines under each leaf item (not nesting levels); merged leaves stack each row's detail block. A **Number levels** toggle prefixes `1./a./i.` markers by depth (restarting per parent). Blank cell → `(blank)`; first-seen order preserved at every level.
+Row 0 is field names. You pick an **ordered** list of **Nest by** fields; rows nest by that order — field 1 is the outermost grouping, within each group nest by field 2, and so on. Each level is labelled `Field name: value` (the field name comes from that column's header). Rows sharing a value-path **merge** (a pivot with only Row fields, no Values), so duplicate paths collapse. A separate **Detail fields** checklist picks columns shown as flat `Field: value` lines under each leaf item (not nesting levels); merged leaves stack each row's detail block. A **Number levels** toggle prefixes `1./a./i.` markers by depth (restarting per parent). Blank cell → `(blank)`; first-seen order preserved at every level.
 
 ```
 1. Item Category: Fruit
@@ -72,21 +30,8 @@ Row 0 is field names. You pick an **ordered** list of **nesting** fields; rows n
 2. Item Category: Meat
    …
 ```
-Output is a `PivotNode[]` (arbitrary depth; leaves carry optional `details`). Only an optional **Section title** is a real Word heading (rendered as `<h2>` → Heading 1); the nested rows are styled, indented body paragraphs (`<p data-level="N">`, depth clamped at 9) and the detail lines are plain indented `<p>` — all out of Word's navigation outline. With a title the nested data starts at level 2; without one, level 1 with no heading. An ordered field picker records selection order (numbered badges + legend + ▲/▼ reorder).
 
-### 4. A/B/C/D sections — `rowsToTree` (original position convention)
-
-| Column | Role |
-| ------ | ---- |
-| **A** filled | New **section** title |
-| **A** blank  | Subsection of the section above |
-| **B**        | Subsection title |
-| **C**        | Body content |
-| **D**        | Body type flag — `text`, `bullet`, or `table` |
-
-This is the only view that can produce a `table` body (when D = `table`, C is split on newlines/tabs). Blank cells are preserved as `""` during parsing so the A/B/C/D positions stay aligned.
-
-The grouped and per-item views are header-aware (row 0 = field names) and share a **field checklist** for choosing which columns appear.
+Output is a `PivotNode[]` (arbitrary depth; leaves carry optional `details`). Only an optional **Section title** is a real Word heading (rendered as `<h2>` → Heading 1); the nested rows are styled, indented body paragraphs (`<p data-level="N">`, depth clamped at 9) and the detail lines are plain indented `<p>` — all out of Word's navigation outline. With a title the nested data starts at level 2; without one, level 1 with no heading. The ordered field picker records selection order (numbered badges + legend + ▲/▼ reorder).
 
 ## Data flow
 
@@ -95,31 +40,25 @@ clipboard (text/html, else text/plain)
   -> SheetJS XLSX.read({ type: "string" })
   -> sheet_to_json({ header: 1, blankrows: false, defval: "", raw: false })   -> raw Grid  (append a TableState)
   -> tableToHtml(t):
-       grouped|list -> mapper -> wrapInNumberedSection -> renderTree           -> HTML fragment
-       sections     -> rowsToTree -> renderTree                                -> HTML fragment
-       pivot        -> rowsToPivotTree(nestCols, detailCols) -> renderPivotTree(tree, title?, numbered) -> HTML fragment
-  -> live preview (RenderedPreview, dangerouslySetInnerHTML; scoped h2/h3 + [data-level] CSS)
-  -> buildWordHtml + htmlToPlainText -> navigator.clipboard.write / .doc blob  -> paste/open in Word
+       rowsToPivotTree(grid, nestCols, detailCols)
+         -> renderPivotTree(tree, title?, numbered)                           -> HTML fragment
+  -> live preview (RenderedPreview, dangerouslySetInnerHTML; scoped h2 + [data-level] CSS)
+  -> buildWordHtml + htmlToPlainText -> navigator.clipboard.write             -> paste into Word
 ```
 
-Per-table Copy/Download run `tableToHtml` for that one table; combined **Copy all / Download all** join every table's fragment and run **one** `buildWordHtml` (valid because its heading rewrites are global regexes and it emits a single `@page`). `renderTree`/`renderPivotTree` escape all user-derived text (`& < >`) and omit blank `number`s. The JSON view shows the raw Grid instead of the rendered tree.
-
-## Numbering
-
-`lib/numbering.ts` exports `wrapInNumberedSection(items, sectionNumber, sectionTitle)`: it wraps the grouped/per-item output under one top-level section (the user-chosen number + title, e.g. `5 Fruit Database`) whose children are numbered `5.1`, `5.2`, … (1-based). It returns a fresh tree and is pure. The **A/B/C/D** view is not wrapped (it is already two levels deep). `renderTree` renders the numbers as-is and omits any that are blank.
-
-## Not currently wired in
-
-- **Wide-table width strategy.** Transpose/split so a wide table fits a Letter page is **not** implemented. It is largely moot for the grouped/per-item views (they emit narrow bullet lists, not tables); it only matters for the A/B/C/D view's `table` bodies. Page-fit today comes from the content being narrow block flow, reinforced by `buildWordHtml`'s `@page` + `overflow-wrap` hints.
-- **`.docx` generation.** Out of scope; export is HTML-on-clipboard only.
+Per-table **Copy for Word** runs `tableToHtml` for that one table; combined **Copy all** joins every table's fragment and runs **one** `buildWordHtml` (valid because its rewrites are global regexes and it emits a single `@page`). `renderPivotTree` escapes all user-derived text (`& < >`). The JSON view shows the raw Grid instead of the rendered tree.
 
 ## Clipboard output
 
-`lib/clipboard.ts` wraps the rendered fragment for Word and applies the heading styling:
-- `buildWordHtml(fragment, heading, bodyFont)` → an Office-namespaced `<html>` with a `<style>` (`@page`, body font, heading rules) and `<body>{rewritten fragment}`. It rewrites `<h2>`→`<p class="MsoHeading1">`, `<h3>`→`MsoHeading2` (real Word headings: `mso-style-name:"heading N"` + `mso-outline-level:N`, so they appear in the outline), and pivot `<p data-level="N">`→`MsoPiv1..9` (**non-heading** styled paragraphs — no `mso-style-name`/`mso-outline-level`, just the per-level look + a growing left indent, so they stay out of the outline). Every look comes from `heading.levels[N-1]`. The browser writes the Windows CF_HTML header automatically.
+`lib/clipboard.ts` wraps the rendered fragment for Word and applies the styling:
+- `buildWordHtml(fragment, heading, bodyFont)` → an Office-namespaced `<html>` with a `<style>` (`@page`, body font, heading rules) and `<body>{rewritten fragment}`. It rewrites the `<h2>` title → `<p class="MsoHeading1">` (a real Word heading: `mso-style-name:"heading 1"` + `mso-outline-level:1`, so it appears in the outline), and pivot `<p data-level="N">` → `MsoPiv1..9` (**non-heading** styled paragraphs — no `mso-style-name`/`mso-outline-level`, just the per-level look + a growing left indent, so they stay out of the outline). Detail `<p style=...>` lines pass through untouched as body text. Every look comes from `heading.levels[N-1]`. The browser writes the Windows CF_HTML header automatically.
 - `htmlToPlainText(fragment)` → readable plain-text fallback for the `text/plain` flavor.
 
-`HeadingStyle = { levels: LevelStyle[] }` is the single styling source, built once in `PasteInput` and shared by every table — Level 1 styles `MsoHeading1` (h2 + the pivot title), Level 2 styles `MsoHeading2` (h3), Levels 3-9 the deeper pivot rows. The card's `copyForWord()` / parent's `copyAll()` write a `ClipboardItem` with both flavors via `navigator.clipboard.write`; `downloadForWord()` / `downloadAll()` save the same HTML as a `.doc`.
+`HeadingStyle = { levels: LevelStyle[] }` is the single styling source, built once in `PasteInput` and shared by every table — Level 1 styles `MsoHeading1` (the pivot title), Levels 2-9 the nested rows by depth. The card's `copyForWord()` and the parent's `copyAll()` write a `ClipboardItem` with both flavors via `navigator.clipboard.write`. Export is clipboard-only (no download).
+
+## Out of scope
+
+- **`.docx` generation** — export is HTML-on-clipboard only.
 
 ## Pipeline diagram
 
@@ -128,32 +67,13 @@ flowchart TD
     A["User pastes Excel block"]
     B["parseClipboard: read text/html or text/plain"]
     C["SheetJS XLSX.read -> sheet_to_json -> raw Grid"]
-    V{"Layout (per table)"}
-    G["rowsToGroupedSections (group by field)"]
-    L["rowsToAttributeSections (fields as bullets)"]
-    S["rowsToTree (A/B/C/D)"]
-    PV["rowsToPivotTree (nested rows) + optional title root"]
-    T["Section tree"]
-    R["renderTree + renderBody -> HTML fragment"]
-    RP["renderPivotTree -> HTML fragment"]
+    PV["rowsToPivotTree(nestCols, detailCols) -> PivotNode[]"]
+    RP["renderPivotTree(tree, title?, numbered) -> HTML fragment"]
     P["RenderedPreview (live)"]
     J["JsonPreview (raw Grid)"]
     W["buildWordHtml + htmlToPlainText"]
-    X["clipboard.write / .doc blob -> paste/open in Word"]
-    NW["wrapInNumberedSection (number + title)"]
-    A --> B --> C --> V
-    V -->|grouped| G --> NW
-    V -->|list| L --> NW
-    NW --> T
-    V -->|sections| S --> T
-    V -->|pivot| PV --> RP
-    T --> R --> P
-    RP --> P
+    X["navigator.clipboard.write -> paste into Word"]
+    A --> B --> C --> PV --> RP --> P
     C -.-> J
-    R --> W --> X
-    RP --> W
-
-    K["wide-table transpose/split -- not implemented"]
-    class K deferred;
-    classDef deferred fill:#374151,stroke:#9ca3af,color:#e5e7eb;
+    RP --> W --> X
 ```

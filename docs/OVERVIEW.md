@@ -2,11 +2,11 @@
 
 ## What this is
 
-A web app that converts **pasted Excel data into Word-ready document sections**. You paste one or more tables copied from Excel (or Google Sheets); the app restructures each into a section tree, renders it as HTML, and copies it to the clipboard so it pastes into Microsoft Word as native headings and bullet lists.
+A web app that converts **pasted Excel data into a Word-ready nested outline**. You paste one or more tables copied from Excel (or Google Sheets); the app restructures each into an Excel-pivot-style hierarchy ("Rows area") and copies it to the clipboard so it pastes into Microsoft Word.
 
 ## The problem it solves
 
-Wide Excel tables do not fit on an 8.5" x 11" Word page and become unreadable once columns bleed off the right edge. Instead of shrinking or splitting the grid, this app **restructures** spreadsheet data into readable, narrow sections — turning one unwieldy wide table into a sequence of headings, each followed by a short bullet list, so it flows down a Word page instead of off the side.
+Wide Excel tables do not fit on an 8.5" x 11" Word page and become unreadable once columns bleed off the right edge. Instead of shrinking or splitting the grid, this app **restructures** spreadsheet data into a narrow, nested outline — group rows by an ordered list of fields, with the remaining fields as detail lines under each item — so it flows down a Word page instead of off the side.
 
 ## Tech stack
 
@@ -17,26 +17,17 @@ Wide Excel tables do not fit on an 8.5" x 11" Word page and become unreadable on
 
 ## What works today
 
-The full pipeline is implemented end to end, for multiple tables:
+The full pivot pipeline is implemented end to end, for multiple tables:
 
 1. **Paste → parse.** A client component captures each paste and parses it with SheetJS into a raw Grid, appending a new table. Tables are managed as cards in a horizontal tab strip (one edited at a time, cap 100).
-2. **Map → tree.** Each table picks one of four layouts:
-   - **Grouped by field** (default) — group rows by a chosen field; members listed as bullets.
-   - **Fields as bullets** — one section per row; chosen fields as `Field: value` bullets.
-   - **Pivot (nested rows)** — Excel "Rows area": pick fields in order; rows nest by that order (shared paths merge), into an arbitrary-depth `PivotNode` tree.
-   - **A/B/C/D sections** — the original position-based convention (column A = section, B = subsection, C = body, D = type).
-3. **Render → preview.** The tree is rendered to HTML and shown in each card's live preview (or toggle to inspect the raw Grid as JSON).
-4. **Copy/Download for Word.** Each card writes `text/html` (+ a `text/plain` fallback) to the clipboard or downloads a `.doc`; a combined **Copy all / Download all** exports every table as one document. Pasting into Word yields native headings and bullet lists that fit a Letter page.
+2. **Nest → tree.** `rowsToPivotTree` nests rows by an ordered list of **Nest by** fields (shared value-paths merge) into an arbitrary-depth `PivotNode` tree; a **Detail fields** checklist attaches the remaining columns as `Field: value` lines on each leaf.
+3. **Render → preview.** The tree is rendered to HTML and shown in each card's live preview (or toggle to inspect the raw Grid as JSON). A **Number levels** toggle adds `1./a./i.` markers by depth.
+4. **Copy for Word.** Each card writes `text/html` (+ a `text/plain` fallback) to the clipboard; a combined **Copy all** exports every table as one document. An optional **Section title** is the one Word heading; the nested rows + details are styled body text.
 
-**Styling.** One shared **per-level** panel ("Heading levels") styles every heading across all tables: Level 1 = top headings (section headings + the pivot title), Level 2 = subsections, Levels 3-9 = deeper pivot levels — color/font/size/bold each, defaulting to all the same. In the pivot view only the title is a real Word heading; the nested rows are styled, indented body paragraphs (kept out of Word's outline).
+**Styling.** One shared **per-level** panel ("Heading levels") styles the pivot across all tables: Level 1 = the title, Levels 2-9 = the nested rows by depth — color/font/size/bold each, defaulting to all the same (distinguished by indent). Only the title is a real Word heading; the nested rows stay out of Word's navigation outline.
 
-See [ARCHITECTURE.md](./ARCHITECTURE.md) for the data model, view modes, and pipeline, and [ROADMAP.md](./ROADMAP.md) for status.
+See [ARCHITECTURE.md](./ARCHITECTURE.md) for the data model, the pivot, and the pipeline, and [ROADMAP.md](./ROADMAP.md) for status.
 
-## Numbering
+## Out of scope
 
-The grouped and per-item views wrap their output in one numbered, titled section — you pick a **Section #** (default 1) and a **Section title**, e.g. `5 Fruit Database`, and the items beneath are numbered `5.1`, `5.2`, … (`lib/numbering.ts` `wrapInNumberedSection`). The A/B/C/D view is left un-numbered. The pivot view is also un-numbered, but takes an optional plain **Section title** as its top heading (the nested rows sit beneath it).
-
-## Not wired in
-
-- **Wide-table transpose/split** is not implemented (largely moot, since the active views emit narrow bullet lists rather than tables).
-- **`.docx` generation** is out of scope; export is HTML-on-clipboard only.
+- **`.docx` generation** — export is HTML-on-clipboard only ("Copy for Word"). There is no download.
