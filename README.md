@@ -4,7 +4,7 @@ Convert pasted Excel data into a **Word-ready nested outline**. Paste one or mor
 
 ## Why
 
-Wide Excel tables don't fit an 8.5" x 11" Word page — columns bleed off the edge and the table becomes unreadable. Rather than shrink or split the grid, this app turns one wide table into a narrow, nested outline (group by an ordered list of fields; the rest become detail lines under each item) that flows down the page.
+Wide Excel tables don't fit an 8.5" x 11" Word page — columns bleed off the edge and the table becomes unreadable. Rather than shrink or split the grid, this app turns one wide table into a narrow, nested outline: you arrange fields into ordered **indent levels** (each level can stack several fields at the same indentation) and rows nest and merge by those levels, so it flows down the page.
 
 ## Status
 
@@ -12,7 +12,7 @@ Wide Excel tables don't fit an 8.5" x 11" Word page — columns bleed off the ed
 
 ## The pivot view
 
-Pick an ordered list of **Nest by** fields; rows nest by that order (field 1 = outermost) and shared value-paths **merge**. Each nested row reads `Field name: value`. A **Detail fields** checklist picks the remaining columns to show as flat `Field: value` lines under each item. A **Number levels** toggle prefixes `1.`/`a.`/`i.` markers by depth. An optional **Section title** is the only Word heading (Heading 1); the nested rows + details are indented body text, so they don't clutter Word's navigation outline. A **View JSON** toggle inspects the raw parsed grid.
+Add fields from the **Add fields** pool, then shape the **Structure**: each field sits at an indent level, and ◄/► move it shallower/deeper. Stack several fields at one level to show them together at the same indent; ▲/▼ reorder and ✕ removes. Rows nest by the levels and **merge** when their values match across a level's fields. Each line reads `Field name: value`. A per-level **Markers** picker prefixes `1.`/`a.`/`i.`/etc. (the first field of a multi-field level carries the marker). An optional **Section title** is the only Word heading (Heading 1); the nested rows are indented body text, so they don't clutter Word's navigation outline. A **View JSON** toggle inspects the raw parsed grid.
 
 ## Multiple tables
 
@@ -32,7 +32,7 @@ npm install
 npm run dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000), click the paste zone, and press **Ctrl/Cmd + V** with a cell range copied from Excel or Google Sheets. Pick your nest + detail fields; the live preview updates. Click **Copy for Word** and paste into a Word document (with *Use Destination Styles* so the title maps to your Heading 1).
+Open [http://localhost:3000](http://localhost:3000), click the paste zone, and press **Ctrl/Cmd + V** with a cell range copied from Excel or Google Sheets. Add fields and set their indent levels; the live preview updates. Click **Copy for Word** and paste into a Word document (with *Use Destination Styles* so the title maps to your Heading 1).
 
 ## Docs
 
@@ -47,13 +47,13 @@ app/                 App Router pages (home renders the paste view)
 components/
   PasteInput.tsx     parent: paste/append, tables[] + shared styles, tab strip, Copy all
   TableCard.tsx      one table's pivot editor + preview + per-table Copy for Word
-  tableModel.ts      TableState + tableToHtml (per-table nest->render) + pivotDetailColumnsOf
-  RenderedPreview.tsx renders the pivot HTML (live preview; h2 title + [data-level] CSS)
+  tableModel.ts      TableState + tableToHtml (per-table nest->render) + bucket helpers (add/remove/indent/outdent/move/unusedColumns)
+  RenderedPreview.tsx renders the pivot HTML (live preview; ws-title + [data-level] CSS)
   JsonPreview.tsx    shows the raw parsed Grid as JSON
 lib/
   types.ts           PivotNode model + raw Grid
   parser.ts          SheetJS clipboard -> Grid
-  mapper.ts          rowsToPivotTree (Grid -> PivotNode[]) + cellToString
+  mapper.ts          rowsToPivotTree (Grid + indent buckets -> PivotNode[]) + cellToString
   renderers.ts       renderPivotTree (tree -> HTML fragment) + numbering helpers
   clipboard.ts       Word-friendly clipboard wrapper (buildWordHtml / htmlToPlainText; HeadingStyle / LevelStyle)
 docs/                OVERVIEW, ARCHITECTURE, ROADMAP

@@ -6,7 +6,7 @@ A web app that converts **pasted Excel data into a Word-ready nested outline**. 
 
 ## The problem it solves
 
-Wide Excel tables do not fit on an 8.5" x 11" Word page and become unreadable once columns bleed off the right edge. Instead of shrinking or splitting the grid, this app **restructures** spreadsheet data into a narrow, nested outline — group rows by an ordered list of fields, with the remaining fields as detail lines under each item — so it flows down a Word page instead of off the side.
+Wide Excel tables do not fit on an 8.5" x 11" Word page and become unreadable once columns bleed off the right edge. Instead of shrinking or splitting the grid, this app **restructures** spreadsheet data into a narrow, nested outline — you arrange fields into ordered indent levels (each level can stack several fields at the same indentation), and rows nest and merge by those levels — so it flows down a Word page instead of off the side.
 
 ## Tech stack
 
@@ -20,9 +20,9 @@ Wide Excel tables do not fit on an 8.5" x 11" Word page and become unreadable on
 The full pivot pipeline is implemented end to end, for multiple tables:
 
 1. **Paste → parse.** A client component captures each paste and parses it with SheetJS into a raw Grid, appending a new table. Tables are managed as cards in a horizontal tab strip (one edited at a time, cap 100).
-2. **Nest → tree.** `rowsToPivotTree` nests rows by an ordered list of **Nest by** fields (shared value-paths merge) into an arbitrary-depth `PivotNode` tree; a **Detail fields** checklist attaches the remaining columns as `Field: value` lines on each leaf.
-3. **Render → preview.** The tree is rendered to HTML and shown in each card's live preview (or toggle to inspect the raw Grid as JSON). A **Number levels** toggle adds `1./a./i.` markers by depth.
-4. **Copy for Word.** Each card writes `text/html` (+ a `text/plain` fallback) to the clipboard; a combined **Copy all** exports every table as one document. An optional **Section title** is the one Word heading; the nested rows + details are styled body text.
+2. **Nest → tree.** `rowsToPivotTree` nests rows by an ordered list of **indent buckets** (`pivotLevels`) into an arbitrary-depth `PivotNode` tree. Each bucket is one indent level holding one or more fields; fields stacked in a bucket render at the same indent and rows merge by the composite of that level's values.
+3. **Render → preview.** The tree is rendered to HTML and shown in each card's live preview (or toggle to inspect the raw Grid as JSON). A per-level **Markers** picker adds `1./a./i.`/etc. by depth (only the first field of a multi-field level is marked).
+4. **Copy for Word.** Each card writes `text/html` (+ a `text/plain` fallback) to the clipboard; a combined **Copy all** exports every table as one document. An optional **Section title** is the one Word heading; the nested rows are styled body text.
 
 **Styling.** One shared **per-level** panel ("Heading levels") styles the pivot across all tables: Level 1 = the title, Levels 2-9 = the nested rows by depth — color/font/size/bold each, defaulting to all the same (distinguished by indent). Only the title is a real Word heading; the nested rows stay out of Word's navigation outline.
 

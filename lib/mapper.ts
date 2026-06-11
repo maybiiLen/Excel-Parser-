@@ -13,40 +13,32 @@ function cellToString(cell: unknown): string {
 
 /**
  * Pivot mapper (Excel "Rows area"): nest rows into an arbitrary-depth tree by an
- * ORDERED list of columns. `orderedColumns[0]` is the outermost grouping; within
- * each group rows nest by `orderedColumns[1]`; and so on. Rows that share a full
- * value-path MERGE into the same branch (a pivot with only Row fields, no
- * Values), so duplicate paths collapse.
+ * ORDERED list of INDENT BUCKETS. `levels[0]` is the outermost indent level;
+ * within each group rows nest by `levels[1]`; and so on. Each bucket holds one or
+ * more columns: a bucket's group key is the COMBINATION of all its columns'
+ * values, so rows merge into the same node only when they match across every
+ * field in that bucket. A node's `lines` are the bucket's fields rendered as
+ * stacked "Field: value" lines at the same indent.
  *
- * Row 0 is the header (used to label each level). Each node reads as
+ * Row 0 is the header (used to label each field). Each line reads as
  * `Field name: value` (e.g. `Origin: Brazil`), with the field name taken from
- * the header of that level's column; a blank value -> "(blank)" and a blank
+ * the header of that field's column; a blank value -> "(blank)" and a blank
  * header drops the prefix (just the value). First-seen order is preserved at
  * every level: a JS array keeps push order, and a per-level `Map` (held in a
  * `WeakMap` keyed by node, discarded after the build) is only a dedup index,
- * never the ordered output. Rows sharing the same labelled path MERGE.
- *
- * `detailColumns` (optional) are NOT nesting levels: each row's values for those
- * columns are attached as `Field: value` lines on the leaf node it reaches
- * (`PivotNode.details`). When several rows merge into one leaf, their blocks
- * stack in row order.
+ * never the ordered output.
  *
  * Resilient like the other mappers: never throws (`row?.[col]` + `cellToString`).
- * Empty `orderedColumns`, or an empty/header-only grid, yields `[]`.
+ * Empty `levels`, or an empty/header-only grid, yields `[]`.
  */
-export function rowsToPivotTree(
-  rows: Grid,
-  orderedColumns: number[],
-  detailColumns: number[] = [],
-): PivotNode[] {
-  if (orderedColumns.length === 0) return [];
+export function rowsToPivotTree(rows: Grid, levels: number[][]): PivotNode[] {
+  if (levels.length === 0) return [];
   const [header = [], ...dataRows] = rows;
   const headers = header.map(cellToString);
   const labelOf = (col: number) => {
     const name = headers[col]?.trim() ?? "";
     return (value: string) => (name ? `${name}: ${value}` : value);
   };
-  const detailLabels = detailColumns.map(labelOf);
 
   const roots: PivotNode[] = [];
   const rootIndex = new Map<string, PivotNode>();
@@ -57,29 +49,25 @@ export function rowsToPivotTree(
   for (const row of dataRows) {
     let siblings = roots;
     let index = rootIndex;
-    let leaf: PivotNode | null = null;
-    for (const col of orderedColumns) {
-      const value = cellToString(row?.[col]).trim() || "(blank)";
-      // Label each level with its field name, e.g. "Fruit Name: Apple".
-      const label = labelOf(col)(value);
-      let node = index.get(label);
+    for (const bucket of levels) {
+      // A bucket's identity is the combination of all its fields' values.
+      // JSON.stringify gives a collision-free key (distinct value tuples always
+      // serialize differently, quotes/brackets escaped). The key is internal;
+      // `lines` below carry the human labels.
+      const values = bucket.map(
+        (col) => cellToString(row?.[col]).trim() || "(blank)",
+      );
+      const key = JSON.stringify(values);
+      let node = index.get(key);
       if (!node) {
-        node = { title: label, children: [] };
+        const lines = bucket.map((col, i) => labelOf(col)(values[i]));
+        node = { lines, children: [] };
         siblings.push(node); // first sight -> preserve insertion order
-        index.set(label, node);
+        index.set(key, node);
         childIndex.set(node, new Map());
       }
       siblings = node.children;
       index = childIndex.get(node)!;
-      leaf = node;
-    }
-    // Hang this row's detail fields off the leaf it reached. Rows that merged
-    // into the same leaf append their blocks, in row order.
-    if (leaf && detailLabels.length > 0) {
-      const lines = detailColumns.map((col, i) =>
-        detailLabels[i](cellToString(row?.[col]).trim()),
-      );
-      (leaf.details ??= []).push(...lines);
     }
   }
 

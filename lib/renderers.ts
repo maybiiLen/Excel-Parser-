@@ -89,16 +89,14 @@ export function defaultMarker(depth: number): MarkerKind {
  *
  * The optional `title` is emitted as a distinct `<p class="ws-title">` so
  * `buildWordHtml` can map it to a Word heading style; the nested rows
- * (`<p class="ws-lvl" data-level="N">`) and leaf details (`<p class="ws-detail"
- * data-detail="N">`) map to a body style. When a title is present the nested
- * data starts at level 2 beneath it, otherwise at level 1.
+ * (`<p class="ws-lvl" data-level="N">`) map to a body style. When a title is
+ * present the nested data starts at level 2 beneath it, otherwise at level 1.
  *
- * A node's `details` (leaf "Field: value" lines) render as `<p class="ws-detail"
- * data-detail="N">` body paragraphs -- not nesting levels, not headings; their
- * indent (one step past the leaf) is applied in the style layer, like the rows.
- * Each nested node gets a per-level marker (`markers[depth-1]`, falling back to
- * the legacy cycle), restarting per parent; the title and detail lines are never
- * marked.
+ * Each node carries one or more `lines` (the fields stacked at that indent
+ * level). They all render at the same `data-level`; only the FIRST line gets the
+ * level's marker (`markers[depth-1]`, falling back to the legacy cycle, counting
+ * up per parent), so the extra stacked fields read as plain body lines. The
+ * title is never marked.
  *
  * The nesting depth rides in a `data-level` ATTRIBUTE, not the tag name (HTML
  * only has h1-h6, and a class like `pl-3` would collide with Tailwind padding
@@ -120,17 +118,13 @@ export function renderPivotTree(
     const kind = markers[depth - 1] ?? defaultMarker(depth);
     list.forEach((node, i) => {
       const m = markerText(kind, i);
-      const marker = m ? `${m} ` : "";
-      blocks.push(
-        `<p class="ws-lvl" data-level="${lvl}">${marker}${escapeHtml(node.title)}</p>`,
-      );
-      if (node.details) {
-        for (const line of node.details) {
-          blocks.push(
-            `<p class="ws-detail" data-detail="${lvl}">${escapeHtml(line)}</p>`,
-          );
-        }
-      }
+      node.lines.forEach((line, j) => {
+        // Only the first stacked field carries the marker; the rest are plain.
+        const marker = j === 0 && m ? `${m} ` : "";
+        blocks.push(
+          `<p class="ws-lvl" data-level="${lvl}">${marker}${escapeHtml(line)}</p>`,
+        );
+      });
       if (node.children.length > 0) walk(node.children, level + 1, depth + 1);
     });
   };

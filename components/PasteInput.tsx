@@ -113,8 +113,7 @@ export function PasteInput() {
       const next: TableState = {
         id,
         grid: rows,
-        selectedCols: new Set((rows[0] ?? []).map((_, i) => i)), // all fields on
-        pivotOrder: [],
+        pivotLevels: [], // nothing placed yet; user builds the outline
         markers: [], // sparse -> default 1./a./i. cycle until the user picks
         sectionTitle: "",
       };
@@ -183,14 +182,15 @@ export function PasteInput() {
   // The open tab; fall back to the first table if the id ever goes stale.
   const activeTable = tables.find((t) => t.id === activeId) ?? tables[0] ?? null;
 
-  // One level row per depth actually in use across all pivots: field count + 1
-  // for a title (the title is level 1). Clamped to Word's 9-level max.
+  // One level row per depth actually in use across all pivots: bucket (indent
+  // level) count + 1 for a title (the title is level 1). Stacked fields share a
+  // bucket, so they don't add depth. Clamped to Word's 9-level max.
   const maxDepth = Math.min(
     9,
     Math.max(
       1,
       ...tables.map(
-        (t) => t.pivotOrder.length + (t.sectionTitle.trim() ? 1 : 0),
+        (t) => t.pivotLevels.length + (t.sectionTitle.trim() ? 1 : 0),
       ),
     ),
   );

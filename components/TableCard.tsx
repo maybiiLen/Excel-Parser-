@@ -4,11 +4,22 @@ import { memo, useMemo, useState } from "react";
 import { buildWordHtml, htmlToPlainText } from "@/lib/clipboard";
 import type { HeadingStyle } from "@/lib/clipboard";
 import { defaultMarker, type MarkerKind } from "@/lib/renderers";
-import { tableToHtml, type TableState } from "./tableModel";
+import {
+  addField,
+  canIndent,
+  canOutdent,
+  indentField,
+  moveField,
+  outdentField,
+  removeField,
+  tableToHtml,
+  unusedColumns,
+  type TableState,
+} from "./tableModel";
 import { JsonPreview } from "./JsonPreview";
 import { RenderedPreview } from "./RenderedPreview";
 
-/** Marker styles offered per nesting level, with a sample label. */
+/** Marker styles offered per indent level, with a sample label. */
 const MARKER_OPTIONS: { kind: MarkerKind; label: string }[] = [
   { kind: "decimal", label: "1." },
   { kind: "paren", label: "1)" },
@@ -28,35 +39,41 @@ type Props = {
   onChange: (patch: Partial<TableState>) => void;
 };
 
-/** Return a copy of `arr` with the items at i and j swapped. */
-function swap(arr: number[], i: number, j: number): number[] {
-  const next = [...arr];
-  [next[i], next[j]] = [next[j], next[i]];
-  return next;
-}
-
 function TableCardInner({ table, headingStyle, bodyFont, onChange }: Props) {
   const [view, setView] = useState<"rendered" | "json">("rendered");
   const [copyState, setCopyState] = useState<"idle" | "copied" | "error">("idle");
 
-  const { grid, selectedCols, pivotOrder } = table;
+  const { grid, pivotLevels } = table;
 
-  // Header row, for the pivot field pickers.
+  // Header row, for the field names.
   const headers = useMemo(
     () => (grid[0] ? grid[0].map((c) => (c == null ? "" : String(c))) : []),
     [grid],
   );
 
+  // Fields not yet placed in any indent bucket (the "Add fields" pool).
+  const unused = useMemo(
+    () => unusedColumns(headers.length, pivotLevels),
+    [headers.length, pivotLevels],
+  );
+
+  // The placed fields flattened, each tagged with its bucket b, within-bucket k,
+  // and flat index fi (the argument the structure helpers expect).
+  const placed = useMemo(() => {
+    const out: { col: number; b: number; fi: number }[] = [];
+    let fi = 0;
+    pivotLevels.forEach((bucket, b) =>
+      bucket.forEach((col) => {
+        out.push({ col, b, fi });
+        fi++;
+      }),
+    );
+    return out;
+  }, [pivotLevels]);
+
   // The whole derive-from-state chain for this one table; recomputed only when
   // this table's record changes (the parent keeps unedited records identical).
   const html = useMemo(() => tableToHtml(table), [table]);
-
-  function toggleCol(i: number) {
-    const next = new Set(selectedCols);
-    if (next.has(i)) next.delete(i);
-    else next.add(i);
-    onChange({ selectedCols: next });
-  }
 
   // Write this table's pivot to the clipboard as text/html (+ text/plain
   // fallback). Built synchronously from `html` before any await, preserving the
@@ -81,6 +98,9 @@ function TableCardInner({ table, headingStyle, bodyFont, onChange }: Props) {
     }
     setTimeout(() => setCopyState("idle"), 2000);
   }
+
+  const btn =
+    "px-1 text-foreground/40 transition-colors hover:text-foreground disabled:opacity-20 disabled:hover:text-foreground/40";
 
   return (
     <div className="flex flex-col gap-3 rounded-xl border border-foreground/15 p-4">
@@ -118,112 +138,146 @@ function TableCardInner({ table, headingStyle, bodyFont, onChange }: Props) {
       </div>
 
       {headers.length > 0 && (
-        <div className="flex flex-col gap-2 text-sm text-foreground/70">
-          <span className="text-foreground/60">
-            Nest rows by{" "}
-            <span className="text-foreground/40">(click fields in order)</span>:
-          </span>
-          <div className="flex flex-wrap items-center gap-1.5">
-            {headers.map((h, i) => {
-              const pos = pivotOrder.indexOf(i);
-              const selected = pos >= 0;
-              const name = h || `Column ${i + 1}`;
-              return (
-                <button
-                  key={i}
-                  type="button"
-                  aria-pressed={selected}
-                  onClick={() =>
-                    onChange({
-                      pivotOrder: selected
-                        ? pivotOrder.filter((c) => c !== i)
-                        : [...pivotOrder, i],
-                    })
-                  }
-                  className={`flex items-center gap-1.5 rounded-md border px-2 py-1 text-xs transition-colors ${
-                    selected
-                      ? "border-foreground/30 bg-foreground/[0.06] font-medium text-foreground"
-                      : "border-foreground/15 text-foreground/60 hover:bg-foreground/5"
-                  }`}
-                >
-                  {selected && (
-                    <span className="flex h-4 w-4 items-center justify-center rounded-full bg-foreground/20 text-[10px] font-semibold tabular-nums">
-                      {pos + 1}
-                    </span>
-                  )}
-                  {name}
-                </button>
-              );
-            })}
-          </div>
-          {pivotOrder.length > 0 && (
-            <div className="flex flex-wrap items-center gap-1.5 text-xs text-foreground/60">
-              <span className="text-foreground/50">Order:</span>
-              {pivotOrder.map((col, idx) => {
-                const name = headers[col] || `Column ${col + 1}`;
-                return (
-                  <span key={col} className="flex items-center gap-1">
-                    {idx > 0 && <span className="text-foreground/30">→</span>}
-                    <span className="rounded bg-foreground/5 px-1.5 py-0.5">
-                      {idx + 1}. {name}
-                    </span>
-                    <span className="flex flex-col leading-none">
-                      <button
-                        type="button"
-                        aria-label={`Move ${name} earlier`}
-                        disabled={idx === 0}
-                        onClick={() =>
-                          onChange({ pivotOrder: swap(pivotOrder, idx, idx - 1) })
-                        }
-                        className="px-0.5 text-foreground/40 transition-colors hover:text-foreground disabled:opacity-25"
-                      >
-                        ▲
-                      </button>
-                      <button
-                        type="button"
-                        aria-label={`Move ${name} later`}
-                        disabled={idx === pivotOrder.length - 1}
-                        onClick={() =>
-                          onChange({ pivotOrder: swap(pivotOrder, idx, idx + 1) })
-                        }
-                        className="px-0.5 text-foreground/40 transition-colors hover:text-foreground disabled:opacity-25"
-                      >
-                        ▼
-                      </button>
-                    </span>
-                  </span>
-                );
-              })}
-            </div>
-          )}
-          {pivotOrder.length > 0 && (
-            <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-sm text-foreground/70">
-              <span className="text-foreground/60">
-                Detail fields{" "}
-                <span className="text-foreground/40">(shown under each item)</span>
-                :
+        <div className="flex flex-col gap-3 text-sm text-foreground/70">
+          {/* Add fields: the unused pool. Clicking appends a new deepest level. */}
+          <div className="flex flex-col gap-1.5">
+            <span className="text-foreground/60">
+              Add fields{" "}
+              <span className="text-foreground/40">
+                (click to add to the outline)
               </span>
-              {headers.map((h, i) =>
-                pivotOrder.includes(i) ? null : (
-                  <label key={i} className="flex items-center gap-1.5">
-                    <input
-                      type="checkbox"
-                      checked={selectedCols.has(i)}
-                      onChange={() => toggleCol(i)}
-                    />
-                    {h || `Column ${i + 1}`}
-                  </label>
-                ),
+              :
+            </span>
+            <div className="flex flex-wrap items-center gap-1.5">
+              {unused.length === 0 ? (
+                <span className="text-xs text-foreground/40">
+                  All fields added.
+                </span>
+              ) : (
+                unused.map((col) => (
+                  <button
+                    key={col}
+                    type="button"
+                    onClick={() =>
+                      onChange({ pivotLevels: addField(pivotLevels, col) })
+                    }
+                    className="rounded-md border border-foreground/15 px-2 py-1 text-xs text-foreground/60 transition-colors hover:bg-foreground/5"
+                  >
+                    + {headers[col] || `Column ${col + 1}`}
+                  </button>
+                ))
               )}
             </div>
+          </div>
+
+          {/* Structure: ordered indent buckets. ◄ ► change level (stack = same
+              indent), ▲ ▼ reorder, ✕ remove. */}
+          {placed.length > 0 && (
+            <div className="flex flex-col gap-1.5">
+              <span className="text-foreground/60">
+                Structure{" "}
+                <span className="text-foreground/40">
+                  (◄ ► set indent — stack fields at one level to show them
+                  together)
+                </span>
+                :
+              </span>
+              <div className="flex flex-col gap-1">
+                {placed.map(({ col, b, fi }) => {
+                  const name = headers[col] || `Column ${col + 1}`;
+                  return (
+                    <div
+                      key={col}
+                      className="flex items-center gap-1.5"
+                      style={{ marginLeft: `${b * 1.25}rem` }}
+                    >
+                      <span className="flex h-4 w-4 items-center justify-center rounded bg-foreground/10 text-[10px] font-semibold tabular-nums text-foreground/60">
+                        {b + 1}
+                      </span>
+                      <span className="rounded bg-foreground/5 px-2 py-0.5 text-xs text-foreground">
+                        {name}
+                      </span>
+                      <span className="flex items-center leading-none">
+                        <button
+                          type="button"
+                          aria-label={`Outdent ${name}`}
+                          disabled={!canOutdent(pivotLevels, fi)}
+                          onClick={() =>
+                            onChange({
+                              pivotLevels: outdentField(pivotLevels, fi),
+                            })
+                          }
+                          className={btn}
+                        >
+                          ◄
+                        </button>
+                        <button
+                          type="button"
+                          aria-label={`Indent ${name}`}
+                          disabled={!canIndent(pivotLevels, fi)}
+                          onClick={() =>
+                            onChange({
+                              pivotLevels: indentField(pivotLevels, fi),
+                            })
+                          }
+                          className={btn}
+                        >
+                          ►
+                        </button>
+                        <button
+                          type="button"
+                          aria-label={`Move ${name} up`}
+                          disabled={fi === 0}
+                          onClick={() =>
+                            onChange({
+                              pivotLevels: moveField(pivotLevels, fi, -1),
+                            })
+                          }
+                          className={btn}
+                        >
+                          ▲
+                        </button>
+                        <button
+                          type="button"
+                          aria-label={`Move ${name} down`}
+                          disabled={fi === placed.length - 1}
+                          onClick={() =>
+                            onChange({
+                              pivotLevels: moveField(pivotLevels, fi, 1),
+                            })
+                          }
+                          className={btn}
+                        >
+                          ▼
+                        </button>
+                        <button
+                          type="button"
+                          aria-label={`Remove ${name}`}
+                          onClick={() =>
+                            onChange({
+                              pivotLevels: removeField(pivotLevels, fi),
+                            })
+                          }
+                          className={`${btn} ml-0.5`}
+                        >
+                          ✕
+                        </button>
+                      </span>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
           )}
-          {pivotOrder.length > 0 && (
+
+          {/* Markers: one picker per indent level (bucket). */}
+          {pivotLevels.length > 0 && (
             <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 text-sm text-foreground/70">
               <span className="text-foreground/60">
                 Markers{" "}
-                <span className="text-foreground/40">(per nesting level)</span>:
+                <span className="text-foreground/40">(per indent level)</span>:
               </span>
-              {pivotOrder.map((_, i) => (
+              {pivotLevels.map((_, i) => (
                 <label
                   key={i}
                   className="flex items-center gap-1.5 text-xs text-foreground/60"
@@ -236,7 +290,7 @@ function TableCardInner({ table, headingStyle, bodyFont, onChange }: Props) {
                       next[i] = e.target.value as MarkerKind;
                       onChange({ markers: next });
                     }}
-                    aria-label={`Marker for nesting level ${i + 1}`}
+                    aria-label={`Marker for indent level ${i + 1}`}
                     className="rounded-md border border-foreground/20 px-2 py-1 text-sm text-foreground"
                   >
                     {MARKER_OPTIONS.map((o) => (
@@ -259,7 +313,7 @@ function TableCardInner({ table, headingStyle, bodyFont, onChange }: Props) {
           html={html}
           headingStyle={headingStyle}
           bodyFont={bodyFont}
-          emptyHint="Pick one or more fields above, in order, to nest rows by (like an Excel pivot's Row Labels)."
+          emptyHint="Add fields above to build the outline. Stack fields at one indent level to show them together (like an Excel pivot's Row Labels)."
         />
       )}
     </div>

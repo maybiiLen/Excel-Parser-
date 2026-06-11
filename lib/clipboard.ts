@@ -32,7 +32,7 @@ export type HeadingStyle = {
   levels: LevelStyle[];
   indentStep: number; // inches of left-indent per nesting level
   headingStyleName: string; // Word style for the title ("" = direct look)
-  bodyStyleName: string; // Word style for the nested rows + details ("" = direct)
+  bodyStyleName: string; // Word style for the nested rows ("" = direct look)
 };
 
 /**
@@ -55,9 +55,8 @@ const FALLBACK_LEVEL: LevelStyle = {
 
 /**
  * Wrap a rendered pivot fragment as a minimal Word-flavored HTML document for the
- * clipboard. The title (`<p class="ws-title">`) becomes `MsoTitle`, the nested
- * rows (`<p class="ws-lvl" data-level="N">`) `MsoPiv*`, and the detail lines
- * (`<p class="ws-detail" data-detail="N">`) `MsoDet*`.
+ * clipboard. The title (`<p class="ws-title">`) becomes `MsoTitle` and the nested
+ * rows (`<p class="ws-lvl" data-level="N">`) become `MsoPiv*`.
  *
  * When a Word style NAME is given, that class carries `mso-style-name:"<name>"`
  * (title also `mso-outline-level:1`) and NO direct font/color, so a
@@ -73,16 +72,12 @@ export function buildWordHtml(
   bodyFont: string,
 ): string {
   const body = fragment
-    // Title -> MsoTitle; nested rows -> MsoPiv{N}; detail lines -> MsoDet{N}.
-    // The N rewrites are anchored to a 1-9 digit so they never match a bare <p>.
+    // Title -> MsoTitle; nested rows -> MsoPiv{N}. The N rewrite is anchored to a
+    // 1-9 digit so it never matches a bare <p>.
     .replace(/<p class="ws-title">([\s\S]*?)<\/p>/g, '<p class="MsoTitle">$1</p>')
     .replace(
       /<p class="ws-lvl" data-level="([1-9])">([\s\S]*?)<\/p>/g,
       '<p class="MsoPiv$1">$2</p>',
-    )
-    .replace(
-      /<p class="ws-detail" data-detail="([1-9])">([\s\S]*?)<\/p>/g,
-      '<p class="MsoDet$1">$2</p>',
     );
   const lookOf = (lv: LevelStyle) =>
     `color:${lv.color};font-family:"${lv.font}";font-size:${lv.size}pt;font-weight:${lv.bold ? "bold" : "normal"}`;
@@ -96,18 +91,14 @@ export function buildWordHtml(
   const titleRule = headingName
     ? `p.MsoTitle{mso-style-name:"${headingName}";mso-outline-level:1}`
     : `p.MsoTitle{${lookOf(lvl(0))};${single}}`;
-  // Nested rows + details (levels 1-9). When `bodyName` is set they map to that
-  // Word style (no direct font/color -> template wins); otherwise the per-level
-  // direct look. The app always adds the growing left indent + single spacing.
+  // Nested rows (levels 1-9). When `bodyName` is set they map to that Word style
+  // (no direct font/color -> template wins); otherwise the per-level direct look.
+  // The app always adds the growing left indent + single spacing.
   const pivotRules = Array.from({ length: 9 }, (_, i) => {
     const n = i + 1;
     const pivLeft = `margin-left:${((n - 1) * step).toFixed(2)}in`;
-    const detLeft = `margin-left:${(n * step).toFixed(2)}in`;
     const pivLook = bodyName ? `mso-style-name:"${bodyName}"` : lookOf(lvl(i));
-    const detLook = bodyName ? `mso-style-name:"${bodyName}"` : "";
-    const piv = `p.MsoPiv${n}{${pivLook};${pivLeft};${single}}`;
-    const det = `p.MsoDet${n}{${detLook ? detLook + ";" : ""}${detLeft};${single}}`;
-    return piv + det;
+    return `p.MsoPiv${n}{${pivLook};${pivLeft};${single}}`;
   }).join("");
   return (
     `<html xmlns:o="urn:schemas-microsoft-com:office:office" ` +

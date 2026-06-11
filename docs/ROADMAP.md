@@ -4,14 +4,13 @@ The app is **pivot-only**: paste → nest → render → Copy for Word. It began
 
 | Step | What | Status |
 | ---- | ---- | ------ |
-| **Data model** | `PivotNode { title, children, details? }` ([`lib/types.ts`](../lib/types.ts)) | Done |
+| **Data model** | `PivotNode { lines, children }` ([`lib/types.ts`](../lib/types.ts)) | Done |
 | **Paste → raw rows** | SheetJS clipboard parse + JSON preview ([`lib/parser.ts`](../lib/parser.ts)) | Done |
-| **Pivot mapper** | `rowsToPivotTree(rows, nestCols, detailCols)` — ordered nested group-by; shared paths merge; leaf `details` ([`lib/mapper.ts`](../lib/mapper.ts)) | Done |
-| **Nest-by picker** | Ordered field picker w/ numbered badges + legend + ▲/▼ reorder | Done |
-| **Detail fields** | Checklist of non-nested columns → `Field: value` lines under each leaf | Done |
-| **Number levels** | Toggle: multilevel `1./a./i.` markers by depth, restarting per parent | Done |
-| **Title heading** | Optional Section title → the one Word heading (`<h2>` → Heading 1); nested rows are non-heading body paragraphs | Done |
-| **Renderer** | `renderPivotTree(nodes, title?, numbered?)` → HTML fragment ([`lib/renderers.ts`](../lib/renderers.ts)) | Done |
+| **Pivot mapper** | `rowsToPivotTree(rows, levels)` — ordered indent buckets; each bucket is one level of ≥1 field merged by a composite key ([`lib/mapper.ts`](../lib/mapper.ts)) | Done |
+| **Structure picker** | Add-fields pool + placed list with ◄ outdent / ► indent (stack = same indent) / ▲ ▼ reorder / ✕ remove (`pivotLevels: number[][]`) | Done |
+| **Markers** | Per-level `<select>` (`1./1)/A./a./I./i./•/–/None`); first field of a multi-field level marked, restarting per parent | Done |
+| **Title heading** | Optional Section title → the one Word heading (`ws-title` → Heading 1); nested rows are non-heading body paragraphs | Done |
+| **Renderer** | `renderPivotTree(nodes, title?, markers?)` → HTML fragment ([`lib/renderers.ts`](../lib/renderers.ts)) | Done |
 | **Clipboard output** | `text/html` (+ `text/plain`) for Word ([`lib/clipboard.ts`](../lib/clipboard.ts) `buildWordHtml`) | Done |
 | **Multiple tables + tab strip** | Paste appends a table; cards in a horizontal tab strip (cap 100) | Done |
 | **Shared per-level styling** | One "Heading levels" panel → `HeadingStyle = { levels: LevelStyle[] }`: Level 1 = title, Levels 2-9 = nested rows (color/font/size/bold each, default all the same; "Reset levels") + one Body font | Done |

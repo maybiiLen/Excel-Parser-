@@ -6,19 +6,18 @@
 
 /**
  * A node in the pivot (nested-rows) tree -- the Excel "Rows area" model, where
- * an ordered list of fields nests rows into an arbitrary-depth hierarchy and
- * shared value-paths merge. A leaf is a node with no children; it may carry
- * `details` (flat "Field: value" lines rendered as body text under the item).
+ * an ordered list of INDENT BUCKETS nests rows into an arbitrary-depth hierarchy
+ * and shared value-paths merge. Each bucket is one indent level holding one or
+ * more fields; rows whose values match across all of a bucket's fields merge
+ * into the same node (a composite group key).
+ *
+ * A node carries `lines` -- one "Field: value" per field in its bucket (always
+ * >= 1), rendered stacked at the same indent. The FIRST line carries the level's
+ * marker; the rest are plain. Children nest one level deeper.
  */
 export interface PivotNode {
-  title: string;
+  lines: string[];
   children: PivotNode[];
-  /**
-   * Flat "Field: value" detail lines shown under a leaf item (body text, not a
-   * nesting level). Set only on leaves; when rows merge into one leaf, each
-   * contributing row appends its block, in row order.
-   */
-  details?: string[];
 }
 
 // ---------------------------------------------------------------------------
