@@ -19,20 +19,18 @@ export type LevelStyle = {
 
 /**
  * The single styling source, shared across all tables.
- * - `levels` -- per-depth direct look (index 0 = level 1), used when no Word
- *   style name maps that paragraph.
+ * - `levels` -- per-depth direct look (index 0 = level 1). Always used for the
+ *   body (nested rows), and for the title when `headingStyleName` is blank.
  * - `indentStep` -- left-indent added per nesting level (inches).
- * - `headingStyleName` / `bodyStyleName` -- optional Word style names. When set,
- *   the title gets `mso-style-name:"<headingStyleName>"` and every body paragraph
- *   `mso-style-name:"<bodyStyleName>"`, so a "Use Destination Styles" paste
- *   adopts the destination document's styles (the template controls font/size/
- *   color/spacing; the app only adds indent + markers). Blank = direct look.
+ * - `headingStyleName` -- optional Word style name for the TITLE only. When set,
+ *   the title gets `mso-style-name:"<headingStyleName>"`, so a "Use Destination
+ *   Styles" paste adopts the destination document's heading style. Blank =
+ *   the app's direct level-1 look. The body is always the app's direct look.
  */
 export type HeadingStyle = {
   levels: LevelStyle[];
   indentStep: number; // inches of left-indent per nesting level
   headingStyleName: string; // Word style for the title ("" = direct look)
-  bodyStyleName: string; // Word style for the nested rows ("" = direct look)
 };
 
 /**
@@ -58,13 +56,13 @@ const FALLBACK_LEVEL: LevelStyle = {
  * clipboard. The title (`<p class="ws-title">`) becomes `MsoTitle` and the nested
  * rows (`<p class="ws-lvl" data-level="N">`) become `MsoPiv*`.
  *
- * When a Word style NAME is given, that class carries `mso-style-name:"<name>"`
- * (title also `mso-outline-level:1`) and NO direct font/color, so a
- * "Use Destination Styles" paste adopts the destination document's style (the
- * template controls font/size/color). When the name is blank, the app's direct
- * per-level look is used instead. Body paragraphs are single-spaced; the title's
- * spacing comes from its heading style (mapped) or the direct look (blank). The
- * app always adds the left-indent (and the markers live in the text).
+ * The TITLE maps to a Word heading style when `headingStyleName` is set (it
+ * carries `mso-style-name:"<name>";mso-outline-level:1` and NO direct font/color,
+ * so a "Use Destination Styles" paste adopts the destination document's heading);
+ * blank = the app's direct level-1 look. The BODY always uses the app's direct
+ * per-level look (color/font/size/bold), so what the preview shows is what Word
+ * gets. Body paragraphs are compactly spaced; the app adds the left-indent (and
+ * the markers live in the text).
  */
 export function buildWordHtml(
   fragment: string,
@@ -84,21 +82,21 @@ export function buildWordHtml(
   const lvl = (i: number) => heading.levels[i] ?? FALLBACK_LEVEL;
   const step = heading.indentStep ?? 0.2;
   const headingName = sanitizeStyleName(heading.headingStyleName ?? "");
-  const bodyName = sanitizeStyleName(heading.bodyStyleName ?? "");
-  const single = "line-height:1.0;margin-top:0;margin-bottom:0"; // single spacing
+  // Compact spacing: a 1.25 line (matching the preview's leading-tight) with no
+  // space before/after, so paragraphs sit tight under one another.
+  const single = "line-height:1.25;margin-top:0;margin-bottom:0";
   // Title: a Word heading style when named (template controls the look + the one
   // outline entry), else the direct level-1 look.
   const titleRule = headingName
     ? `p.MsoTitle{mso-style-name:"${headingName}";mso-outline-level:1}`
     : `p.MsoTitle{${lookOf(lvl(0))};${single}}`;
-  // Nested rows (levels 1-9). When `bodyName` is set they map to that Word style
-  // (no direct font/color -> template wins); otherwise the per-level direct look.
-  // The app always adds the growing left indent + single spacing.
+  // Nested rows (levels 1-9): always the app's per-level direct look (color/font/
+  // size/bold) + the growing left indent + compact spacing. No Word-style mapping,
+  // so the bold and spacing the preview shows are exactly what Word receives.
   const pivotRules = Array.from({ length: 9 }, (_, i) => {
     const n = i + 1;
     const pivLeft = `margin-left:${((n - 1) * step).toFixed(2)}in`;
-    const pivLook = bodyName ? `mso-style-name:"${bodyName}"` : lookOf(lvl(i));
-    return `p.MsoPiv${n}{${pivLook};${pivLeft};${single}}`;
+    return `p.MsoPiv${n}{${lookOf(lvl(i))};${pivLeft};${single}}`;
   }).join("");
   return (
     `<html xmlns:o="urn:schemas-microsoft-com:office:office" ` +

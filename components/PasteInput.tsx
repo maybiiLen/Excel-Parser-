@@ -60,7 +60,6 @@ export function PasteInput() {
   // `mso-style-name` so a "Use Destination Styles" paste adopts the destination
   // document's styles. Blank → the app's direct per-level look.
   const [headingStyleName, setHeadingStyleName] = useState<string>("Heading 1");
-  const [bodyStyleName, setBodyStyleName] = useState<string>("paratext");
   const headingStyle = useMemo<HeadingStyle>(() => {
     const clampPt = (s: string, fallback: number) => {
       const n = parseInt(s, 10);
@@ -80,8 +79,8 @@ export function PasteInput() {
     const indentStep = Number.isFinite(parsedIndent)
       ? Math.min(2, Math.max(0, parsedIndent))
       : 0.2;
-    return { levels, indentStep, headingStyleName, bodyStyleName };
-  }, [levelStyles, indentInput, headingStyleName, bodyStyleName]);
+    return { levels, indentStep, headingStyleName };
+  }, [levelStyles, indentInput, headingStyleName]);
 
   // Edit one level: snapshot DEFAULT_LEVEL into that index if it's not set yet,
   // then apply the patch. Keeps the array otherwise sparse.
@@ -268,11 +267,11 @@ export function PasteInput() {
           </div>
 
           <p className="text-xs text-foreground/50">
-            Paste with <strong>Use Destination Styles</strong> so your
-            document&rsquo;s styles apply: set the Word style names below (e.g.{" "}
-            <strong>Heading 1</strong> for the title, <strong>paratext</strong> for
-            the body). Leave a name blank to use the app&rsquo;s direct styling
-            instead.
+            Set a <strong>Heading style</strong> name (e.g.{" "}
+            <strong>Heading 1</strong>) and paste with{" "}
+            <strong>Use Destination Styles</strong> so the title adopts your
+            document&rsquo;s heading. Leave it blank to use the app&rsquo;s direct
+            level-1 look. The body always uses the Level styles below.
           </p>
 
           <div className="flex flex-wrap items-center gap-x-4 gap-y-2 rounded-lg border border-foreground/15 bg-foreground/[0.02] p-3 text-sm text-foreground/70">
@@ -288,17 +287,6 @@ export function PasteInput() {
                 className="w-32 rounded-md border border-foreground/20 px-2 py-1 text-sm text-foreground"
               />
             </label>
-            <label className="flex items-center gap-1.5">
-              Body style
-              <input
-                type="text"
-                value={bodyStyleName}
-                onChange={(e) => setBodyStyleName(e.target.value)}
-                placeholder="(direct)"
-                aria-label="Word style name for the body"
-                className="w-32 rounded-md border border-foreground/20 px-2 py-1 text-sm text-foreground"
-              />
-            </label>
           </div>
 
           <div className="flex flex-col gap-2 rounded-lg border border-foreground/15 bg-foreground/[0.02] p-3 text-sm text-foreground/70">
@@ -306,7 +294,7 @@ export function PasteInput() {
               <span className="text-foreground/60">
                 Level styles{" "}
                 <span className="text-foreground/40">
-                  (used only where no Word style is mapped)
+                  (style the body; and the title when no Heading style is set)
                 </span>
               </span>
               <div className="flex items-center gap-3">
