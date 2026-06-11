@@ -304,6 +304,36 @@ function TableCardInner({
               })}
             </div>
           )}
+          {pivotOrder.length > 0 && (
+            <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-sm text-foreground/70">
+              <span className="text-foreground/60">
+                Detail fields{" "}
+                <span className="text-foreground/40">(shown under each item)</span>
+                :
+              </span>
+              {headers.map((h, i) =>
+                pivotOrder.includes(i) ? null : (
+                  <label key={i} className="flex items-center gap-1.5">
+                    <input
+                      type="checkbox"
+                      checked={selectedCols.has(i)}
+                      onChange={() => toggleCol(i)}
+                    />
+                    {h || `Column ${i + 1}`}
+                  </label>
+                ),
+              )}
+            </div>
+          )}
+          <label className="flex items-center gap-1.5 text-sm text-foreground/70">
+            <input
+              type="checkbox"
+              checked={table.pivotNumbered}
+              onChange={(e) => onChange({ pivotNumbered: e.target.checked })}
+            />
+            Number levels{" "}
+            <span className="text-foreground/40">(1., a., i. …)</span>
+          </label>
         </div>
       )}
 

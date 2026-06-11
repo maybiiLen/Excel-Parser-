@@ -195,16 +195,27 @@ export function rowsToGroupedSections(
  * `WeakMap` keyed by node, discarded after the build) is only a dedup index,
  * never the ordered output. Rows sharing the same labelled path MERGE.
  *
+ * `detailColumns` (optional) are NOT nesting levels: each row's values for those
+ * columns are attached as `Field: value` lines on the leaf node it reaches
+ * (`PivotNode.details`). When several rows merge into one leaf, their blocks
+ * stack in row order.
+ *
  * Resilient like the other mappers: never throws (`row?.[col]` + `cellToString`).
  * Empty `orderedColumns`, or an empty/header-only grid, yields `[]`.
  */
 export function rowsToPivotTree(
   rows: Grid,
   orderedColumns: number[],
+  detailColumns: number[] = [],
 ): PivotNode[] {
   if (orderedColumns.length === 0) return [];
   const [header = [], ...dataRows] = rows;
   const headers = header.map(cellToString);
+  const labelOf = (col: number) => {
+    const name = headers[col]?.trim() ?? "";
+    return (value: string) => (name ? `${name}: ${value}` : value);
+  };
+  const detailLabels = detailColumns.map(labelOf);
 
   const roots: PivotNode[] = [];
   const rootIndex = new Map<string, PivotNode>();
@@ -215,11 +226,11 @@ export function rowsToPivotTree(
   for (const row of dataRows) {
     let siblings = roots;
     let index = rootIndex;
+    let leaf: PivotNode | null = null;
     for (const col of orderedColumns) {
       const value = cellToString(row?.[col]).trim() || "(blank)";
-      const name = headers[col]?.trim() ?? "";
       // Label each level with its field name, e.g. "Fruit Name: Apple".
-      const label = name ? `${name}: ${value}` : value;
+      const label = labelOf(col)(value);
       let node = index.get(label);
       if (!node) {
         node = { title: label, children: [] };
@@ -229,6 +240,15 @@ export function rowsToPivotTree(
       }
       siblings = node.children;
       index = childIndex.get(node)!;
+      leaf = node;
+    }
+    // Hang this row's detail fields off the leaf it reached. Rows that merged
+    // into the same leaf append their blocks, in row order.
+    if (leaf && detailLabels.length > 0) {
+      const lines = detailColumns.map((col, i) =>
+        detailLabels[i](cellToString(row?.[col]).trim()),
+      );
+      (leaf.details ??= []).push(...lines);
     }
   }
 

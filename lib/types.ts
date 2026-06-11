@@ -44,6 +44,12 @@ export type Body =
 export interface PivotNode {
   title: string;
   children: PivotNode[];
+  /**
+   * Flat "Field: value" detail lines shown under a leaf item (body text, not a
+   * nesting level). Set only on leaves; when rows merge into one leaf, each
+   * contributing row appends its block, in row order.
+   */
+  details?: string[];
 }
 
 // ---------------------------------------------------------------------------

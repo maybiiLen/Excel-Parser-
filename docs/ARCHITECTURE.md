@@ -26,6 +26,7 @@ Body =
 PivotNode {              // pivot view only — arbitrary depth
   title: string
   children: PivotNode[]  // leaf = []
+  details?: string[]     // leaf "Field: value" detail lines (body text)
 }
 ```
 
@@ -59,17 +60,19 @@ Apple
 ```
 
 ### 3. Pivot (nested rows) — `rowsToPivotTree`
-Row 0 is field names. You pick an **ordered** list of fields; rows nest by that order — field 1 is the outermost grouping, within each group nest by field 2, and so on. Rows sharing a value-path **merge** (a pivot with only Row fields, no Values), so duplicate paths collapse. Blank cell → `(blank)`; first-seen order preserved at every level.
+Row 0 is field names. You pick an **ordered** list of **nesting** fields; rows nest by that order — field 1 is the outermost grouping, within each group nest by field 2, and so on. Each level is labelled `Field name: value` (the field name comes from that column's header). Rows sharing a value-path **merge** (a pivot with only Row fields, no Values), so duplicate paths collapse. A separate **Detail fields** checklist picks columns shown as flat `Field: value` lines under each leaf item (not nesting levels); merged leaves stack each row's detail block. A **Number levels** toggle prefixes `1./a./i.` markers by depth (restarting per parent). Blank cell → `(blank)`; first-seen order preserved at every level.
 
 ```
-Brazil
-  Winter
-    Apple
-Mexico
-  Spring
-    Cantaloupe
+1. Item Category: Fruit
+   a. Item Name: Apple
+        Item Location: Aisle 5      (detail line, body text)
+        Item Description: Lorem…
+   b. Item Name: Banana
+        …
+2. Item Category: Meat
+   …
 ```
-Output is a `PivotNode[]` of arbitrary depth. Only an optional **Section title** is a real Word heading (rendered as `<h2>` → Heading 1); the nested rows are styled, indented body paragraphs (`<p data-level="N">`, depth clamped at 9) that stay out of Word's navigation outline. With a title the data starts at level 2; without one, level 1 with no heading. An ordered field picker records selection order (numbered badges + legend + ▲/▼ reorder).
+Output is a `PivotNode[]` (arbitrary depth; leaves carry optional `details`). Only an optional **Section title** is a real Word heading (rendered as `<h2>` → Heading 1); the nested rows are styled, indented body paragraphs (`<p data-level="N">`, depth clamped at 9) and the detail lines are plain indented `<p>` — all out of Word's navigation outline. With a title the nested data starts at level 2; without one, level 1 with no heading. An ordered field picker records selection order (numbered badges + legend + ▲/▼ reorder).
 
 ### 4. A/B/C/D sections — `rowsToTree` (original position convention)
 
@@ -94,7 +97,7 @@ clipboard (text/html, else text/plain)
   -> tableToHtml(t):
        grouped|list -> mapper -> wrapInNumberedSection -> renderTree           -> HTML fragment
        sections     -> rowsToTree -> renderTree                                -> HTML fragment
-       pivot        -> rowsToPivotTree -> renderPivotTree(tree, title?)            -> HTML fragment
+       pivot        -> rowsToPivotTree(nestCols, detailCols) -> renderPivotTree(tree, title?, numbered) -> HTML fragment
   -> live preview (RenderedPreview, dangerouslySetInnerHTML; scoped h2/h3 + [data-level] CSS)
   -> buildWordHtml + htmlToPlainText -> navigator.clipboard.write / .doc blob  -> paste/open in Word
 ```

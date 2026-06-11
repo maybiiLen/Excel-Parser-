@@ -25,6 +25,8 @@ export type TableState = {
   selectedCols: Set<number>;
   /** Ordered columns the pivot view nests rows by (selection order). */
   pivotOrder: number[];
+  /** Pivot: number the nested levels (1./a./i. …). */
+  pivotNumbered: boolean;
   /** Wrapping section number, held as a raw string so it can be backspaced. */
   sectionNumberInput: string;
   sectionTitle: string;
@@ -86,6 +88,20 @@ export function fieldColumnsOf(t: TableState): number[] {
 }
 
 /**
+ * Pivot detail columns, in column order: checked (`selectedCols`) but NOT one of
+ * the nesting levels (`pivotOrder`). These render as "Field: value" lines under
+ * each leaf item rather than as deeper nesting levels.
+ */
+export function pivotDetailColumnsOf(t: TableState): number[] {
+  const width = t.grid[0]?.length ?? 0;
+  const cols: number[] = [];
+  for (let i = 0; i < width; i++) {
+    if (t.selectedCols.has(i) && !t.pivotOrder.includes(i)) cols.push(i);
+  }
+  return cols;
+}
+
+/**
  * parse -> map -> (wrap in a numbered section) -> render for one table. The
  * grouped and per-item views are wrapped under one numbered, titled heading
  * (5 Fruit Database -> 5.1, 5.2, ...); A/B/C/D is left as-is. Pure: the single
@@ -97,9 +113,13 @@ export function tableToHtml(t: TableState): string {
   // (rendered as <h2>); the nested rows are styled body paragraphs beneath it.
   // Guard the empty tree first so a title never renders over nothing.
   if (t.layout === "pivot") {
-    const tree = rowsToPivotTree(t.grid, t.pivotOrder);
+    const tree = rowsToPivotTree(t.grid, t.pivotOrder, pivotDetailColumnsOf(t));
     if (tree.length === 0) return "";
-    return renderPivotTree(tree, t.sectionTitle.trim() || undefined);
+    return renderPivotTree(
+      tree,
+      t.sectionTitle.trim() || undefined,
+      t.pivotNumbered,
+    );
   }
   const fieldColumns = fieldColumnsOf(t);
   const num = sectionNumberOf(t);

@@ -34,9 +34,9 @@ Pipeline (per table): paste → `parseClipboard` (Grid) → a mapper (chosen by 
 - `components/JsonPreview.tsx` — displays the raw parsed Grid as JSON
 - `lib/types.ts` — Section, Subsection, Body, `PivotNode`, and raw Grid types
 - `lib/parser.ts` — SheetJS clipboard → Grid (`parseClipboard`)
-- `lib/mapper.ts` — Grid → tree; `rowsToTree` (A/B/C/D), `rowsToAttributeSections` (per-item), `rowsToGroupedSections` (group-by), `rowsToPivotTree` (ordered nested group-by → `PivotNode[]`)
+- `lib/mapper.ts` — Grid → tree; `rowsToTree` (A/B/C/D), `rowsToAttributeSections` (per-item), `rowsToGroupedSections` (group-by), `rowsToPivotTree(rows, nestCols, detailCols)` (ordered nested group-by → `PivotNode[]`, detail cols → leaf `details`)
 - `lib/numbering.ts` — `wrapInNumberedSection`: wraps the grouped/per-item output under one user-numbered, titled section (children numbered N.1, N.2, …)
-- `lib/renderers.ts` — `renderTree` (Section tree → `<h2>/<h3>` fragment) + `renderBody`; `renderPivotTree(nodes, title?)` (optional title → one `<h2>`; PivotNode tree → `<p data-level="N">` body paragraphs, depth clamped at 9); escapes user text, omits blank numbers
+- `lib/renderers.ts` — `renderTree` (Section tree → `<h2>/<h3>` fragment) + `renderBody`; `renderPivotTree(nodes, title?, numbered?)` (optional title → one `<h2>`; PivotNode tree → `<p data-level="N">` body paragraphs + leaf detail `<p>`; optional `1./a./i.` multilevel markers; depth clamped at 9); escapes user text, omits blank numbers
 - `lib/clipboard.ts` — `HeadingStyle`/`LevelStyle` types; `buildWordHtml` (Word doc wrapper: `<h2>/<h3>`→`MsoHeading1/2` headings, pivot `data-level`→`MsoPiv1..9` **non-heading** styled paragraphs, all looks from `levels`) + `htmlToPlainText`
 - `docs/` — OVERVIEW, ARCHITECTURE, ROADMAP
 
@@ -45,13 +45,13 @@ The product is a tree, not a flat table. The four non-pivot views build a 2-leve
 - `Section { number, title, children: Subsection[], body? }` — `body?` carries content directly under a section heading (used by the per-item and grouped views)
 - `Subsection { number, title, body: Body }`
 - `Body = { type: "text", content } | { type: "bullets", items } | { type: "table", rows }`
-- `PivotNode { title, children: PivotNode[] }` — recursive, no body/number; a leaf has `children: []`. Rendered as nested, indented body paragraphs (`<p data-level="N">`); the pivot's optional title is passed separately and rendered as the single `<h2>` heading.
+- `PivotNode { title, children: PivotNode[], details? }` — recursive, no number; a leaf has `children: []` and optional `details` (flat `Field: value` lines). Rendered as nested, indented body paragraphs (`<p data-level="N">`) with details as plain indented `<p>`; the pivot's optional title is passed separately and rendered as the single `<h2>` heading.
 
 ## View modes
 Each table picks its own layout (per-table; default **Grouped by field**):
 - **Grouped by field** (`rowsToGroupedSections`) — row 0 is headers; rows are grouped by a chosen field (each distinct value → a heading), members listed as bullets (a label column + optional checked fields in parens).
 - **Fields as bullets** (`rowsToAttributeSections`) — header row + one row per item; each row → a section titled by a chosen column, other selected fields as "Field: value" bullets.
-- **Pivot (nested rows)** (`rowsToPivotTree`) — Excel "Rows area": pick an ordered list of fields; rows nest by that order (field 1 = outermost), shared value-paths merge. An ordered field picker records selection order (numbered badges + legend + ▲/▼ reorder). Plain (un-numbered). An optional **Section title** is the ONLY Word heading (rendered as `<h2>`); the nested rows are styled, indented body paragraphs beneath it (not in Word's outline). With a title, data starts at level 2; without one, it starts at level 1 and there's no heading.
+- **Pivot (nested rows)** (`rowsToPivotTree`) — Excel "Rows area": pick an ordered list of **nesting** fields; rows nest by that order (field 1 = outermost), shared value-paths merge. Each nested row is labelled `Field name: value` (e.g. `Origin: Brazil`), from that level's column header. A separate **Detail fields** checklist picks columns shown as flat `Field: value` lines under each leaf item (body text, not nesting levels); when rows merge into one leaf, each row's detail block stacks (`PivotNode.details`). A **Number levels** toggle (`pivotNumbered`, default on) prefixes multilevel markers `1.`/`a.`/`i.` by depth, restarting per parent. The ordered field picker records selection order (numbered badges + legend + ▲/▼ reorder). An optional **Section title** is the ONLY Word heading (`<h2>`); the nested rows + details are styled/indented body paragraphs (not in Word's outline). With a title, data starts at level 2; without one, level 1 and no heading.
 - **A/B/C/D sections** (`rowsToTree`, the original position convention) — Column A filled = section title; A blank = subsection of the section above; B = subsection title; C = body content; D = body type flag ("text" | "bullet" | "table").
 
 The grouped/per-item views are header-aware and share a field checklist; they wrap their items under a chosen **Section #** + **Section title** (children numbered N.1, N.2, …). A/B/C/D stays un-numbered.
