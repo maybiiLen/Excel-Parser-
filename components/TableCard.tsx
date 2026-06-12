@@ -4,6 +4,7 @@ import { memo, useMemo, useState } from "react";
 import { buildWordHtml, htmlToPlainText } from "@/lib/clipboard";
 import type { HeadingStyle } from "@/lib/clipboard";
 import { defaultMarker, type MarkerKind } from "@/lib/renderers";
+import { DEFAULT_FIELD_LABEL, type FieldLabel } from "@/lib/types";
 import {
   addField,
   canIndent,
@@ -36,10 +37,17 @@ type Props = {
   table: TableState;
   headingStyle: HeadingStyle;
   bodyFont: string;
+  numberDepth: number;
   onChange: (patch: Partial<TableState>) => void;
 };
 
-function TableCardInner({ table, headingStyle, bodyFont, onChange }: Props) {
+function TableCardInner({
+  table,
+  headingStyle,
+  bodyFont,
+  numberDepth,
+  onChange,
+}: Props) {
   const [view, setView] = useState<"rendered" | "json">("rendered");
   const [copyState, setCopyState] = useState<"idle" | "copied" | "error">("idle");
 
@@ -72,8 +80,16 @@ function TableCardInner({ table, headingStyle, bodyFont, onChange }: Props) {
   }, [pivotLevels]);
 
   // The whole derive-from-state chain for this one table; recomputed only when
-  // this table's record changes (the parent keeps unedited records identical).
-  const html = useMemo(() => tableToHtml(table), [table]);
+  // this table's record (or the shared numberDepth) changes.
+  const html = useMemo(() => tableToHtml(table, numberDepth), [table, numberDepth]);
+
+  // Toggle part of one field's label look (keyed by grid column).
+  function patchLabel(col: number, patch: Partial<FieldLabel>) {
+    const cur = table.fieldLabels[col] ?? DEFAULT_FIELD_LABEL;
+    onChange({
+      fieldLabels: { ...table.fieldLabels, [col]: { ...cur, ...patch } },
+    });
+  }
 
   // Write this table's pivot to the clipboard as text/html (+ text/plain
   // fallback). Built synchronously from `html` before any await, preserving the
@@ -101,6 +117,13 @@ function TableCardInner({ table, headingStyle, bodyFont, onChange }: Props) {
 
   const btn =
     "px-1 text-foreground/40 transition-colors hover:text-foreground disabled:opacity-20 disabled:hover:text-foreground/40";
+  // Per-field label toggle (Aa / B / U): highlighted when active.
+  const tgl = (active: boolean) =>
+    `flex h-5 w-5 items-center justify-center rounded border text-[10px] transition-colors disabled:opacity-25 ${
+      active
+        ? "border-foreground/40 bg-foreground/10 text-foreground"
+        : "border-foreground/15 text-foreground/50 hover:bg-foreground/5"
+    }`;
 
   return (
     <div className="flex flex-col gap-3 rounded-xl border border-foreground/15 p-4">
@@ -185,6 +208,7 @@ function TableCardInner({ table, headingStyle, bodyFont, onChange }: Props) {
               <div className="flex flex-col gap-1">
                 {placed.map(({ col, b, fi }) => {
                   const name = headers[col] || `Column ${col + 1}`;
+                  const lf = table.fieldLabels[col] ?? DEFAULT_FIELD_LABEL;
                   return (
                     <div
                       key={col}
@@ -196,6 +220,43 @@ function TableCardInner({ table, headingStyle, bodyFont, onChange }: Props) {
                       </span>
                       <span className="rounded bg-foreground/5 px-2 py-0.5 text-xs text-foreground">
                         {name}
+                      </span>
+                      {/* Label look: show/hide "Field:", bold it, underline it. */}
+                      <span className="flex items-center gap-0.5">
+                        <button
+                          type="button"
+                          aria-pressed={lf.show}
+                          aria-label={`Show the "${name}:" label`}
+                          title={`Show/hide the "${name}:" label`}
+                          onClick={() => patchLabel(col, { show: !lf.show })}
+                          className={tgl(lf.show)}
+                        >
+                          Aa
+                        </button>
+                        <button
+                          type="button"
+                          aria-pressed={lf.bold}
+                          disabled={!lf.show}
+                          aria-label={`Bold the "${name}:" label`}
+                          title="Bold the label"
+                          onClick={() => patchLabel(col, { bold: !lf.bold })}
+                          className={`${tgl(lf.bold)} font-bold`}
+                        >
+                          B
+                        </button>
+                        <button
+                          type="button"
+                          aria-pressed={lf.underline}
+                          disabled={!lf.show}
+                          aria-label={`Underline the "${name}:" label`}
+                          title="Underline the label"
+                          onClick={() =>
+                            patchLabel(col, { underline: !lf.underline })
+                          }
+                          className={`${tgl(lf.underline)} underline`}
+                        >
+                          U
+                        </button>
                       </span>
                       <span className="flex items-center leading-none">
                         <button
@@ -313,6 +374,7 @@ function TableCardInner({ table, headingStyle, bodyFont, onChange }: Props) {
           html={html}
           headingStyle={headingStyle}
           bodyFont={bodyFont}
+          numbered={numberDepth > 0}
           emptyHint="Add fields above to build the outline. Stack fields at one indent level to show them together (like an Excel pivot's Row Labels)."
         />
       )}

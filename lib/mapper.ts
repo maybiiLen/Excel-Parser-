@@ -1,4 +1,4 @@
-import type { Grid, PivotNode } from "./types";
+import type { Grid, PivotLine, PivotNode } from "./types";
 
 /**
  * Coerce a raw grid cell to a string.
@@ -17,16 +17,16 @@ function cellToString(cell: unknown): string {
  * within each group rows nest by `levels[1]`; and so on. Each bucket holds one or
  * more columns: a bucket's group key is the COMBINATION of all its columns'
  * values, so rows merge into the same node only when they match across every
- * field in that bucket. A node's `lines` are the bucket's fields rendered as
- * stacked "Field: value" lines at the same indent.
+ * field in that bucket. A node's `lines` are the bucket's fields, each a
+ * `PivotLine { col, name, value }` stacked at the same indent.
  *
- * Row 0 is the header (used to label each field). Each line reads as
- * `Field name: value` (e.g. `Origin: Brazil`), with the field name taken from
- * the header of that field's column; a blank value -> "(blank)" and a blank
- * header drops the prefix (just the value). First-seen order is preserved at
- * every level: a JS array keeps push order, and a per-level `Map` (held in a
- * `WeakMap` keyed by node, discarded after the build) is only a dedup index,
- * never the ordered output.
+ * Row 0 is the header (used as each field's label `name`). The label `name` (the
+ * trimmed header) and the cell `value` are kept SEPARATE and raw; the renderer
+ * joins/escapes/formats them ("Field name: value", or just the value when the
+ * label is hidden or the header is blank). A blank value -> "(blank)".
+ * First-seen order is preserved at every level: a JS array keeps push order, and
+ * a per-level `Map` (held in a `WeakMap` keyed by node, discarded after the
+ * build) is only a dedup index, never the ordered output.
  *
  * Resilient like the other mappers: never throws (`row?.[col]` + `cellToString`).
  * Empty `levels`, or an empty/header-only grid, yields `[]`.
@@ -35,10 +35,6 @@ export function rowsToPivotTree(rows: Grid, levels: number[][]): PivotNode[] {
   if (levels.length === 0) return [];
   const [header = [], ...dataRows] = rows;
   const headers = header.map(cellToString);
-  const labelOf = (col: number) => {
-    const name = headers[col]?.trim() ?? "";
-    return (value: string) => (name ? `${name}: ${value}` : value);
-  };
 
   const roots: PivotNode[] = [];
   const rootIndex = new Map<string, PivotNode>();
@@ -60,7 +56,13 @@ export function rowsToPivotTree(rows: Grid, levels: number[][]): PivotNode[] {
       const key = JSON.stringify(values);
       let node = index.get(key);
       if (!node) {
-        const lines = bucket.map((col, i) => labelOf(col)(values[i]));
+        // Keep label (header name) and value separate + raw; the renderer escapes
+        // and formats them (show/hide/bold/underline the label) per field.
+        const lines: PivotLine[] = bucket.map((col, i) => ({
+          col,
+          name: headers[col]?.trim() ?? "",
+          value: values[i],
+        }));
         node = { lines, children: [] };
         siblings.push(node); // first sight -> preserve insertion order
         index.set(key, node);

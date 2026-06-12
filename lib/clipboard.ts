@@ -1,9 +1,9 @@
 // Word-output step: wrap the renderer's HTML fragment as Word-flavored HTML for
-// the clipboard ("Copy for Word"). NOTHING is a Word heading -- the whole pivot
-// is plain, directly-formatted body paragraphs, so it drops under an existing
-// document heading without entering Word's outline or going blue. renderPivotTree
-// returns a bare fragment (no <html>/<head>/<body>); the browser's ClipboardItem
-// writes the Windows CF_HTML header for us.
+// the clipboard ("Copy for Word"). The title (when a Heading style is named) and
+// any Word-numbered levels (`data-heading`) map to destination Heading styles so
+// Word numbers them live; every other body paragraph is plain, directly-formatted
+// text. renderPivotTree returns a bare fragment (no <html>/<head>/<body>); the
+// browser's ClipboardItem writes the Windows CF_HTML header for us.
 
 /**
  * How one heading level should look -- one entry per depth (index 0 = level 1).
@@ -53,21 +53,24 @@ const FALLBACK_LEVEL: LevelStyle = {
 
 /**
  * Wrap a rendered pivot fragment as a minimal Word-flavored HTML document for the
- * clipboard. The title (`<p class="ws-title">`) becomes `MsoTitle` and the nested
- * rows (`<p class="ws-lvl" data-level="N">`) become `MsoPiv*`.
+ * clipboard.
  *
  * The TITLE maps to a Word heading style when `headingStyleName` is set (it
  * carries `mso-style-name:"<name>";mso-outline-level:1`, so a "Use Destination
  * Styles" paste adopts the destination document's heading + its numbering);
  * blank = the app's direct level-1 look.
  *
- * The BODY always uses the app's direct per-level look (color/font/size/bold) +
- * indent + compact spacing, emitted as INLINE formatting on each `<p>` (and `<b>`
- * for bold) rather than CSS classes. A "Use Destination Styles" paste discards
- * class/style-name formatting it can't map (it resets unknown classes like
- * `MsoPiv2` to Normal -- dropping bold and bringing Normal's space-after) but
- * KEEPS inline direct formatting, so the per-level look + tight spacing survive
- * and match the live preview.
+ * Each NUMBERED level (`<p ... data-heading="K">`, set by the renderer when
+ * `numberDepth > 0`) maps to `Heading K` the same way, so Word numbers it live
+ * (5.1, 5.1.1, ...). The exact number comes from the destination template's
+ * heading numbering, only on a "Use Destination Styles" paste.
+ *
+ * Every OTHER body paragraph uses the app's direct per-level look
+ * (color/font/size/bold) + indent + compact spacing, emitted as INLINE formatting
+ * on each `<p>` (and `<b>`/`<u>` runs for the label) rather than CSS classes. A
+ * "Use Destination Styles" paste discards class/style-name formatting it can't map
+ * but KEEPS inline direct formatting + inline runs, so the look, tight spacing,
+ * and label bold/underline survive and match the live preview.
  */
 export function buildWordHtml(
   fragment: string,
@@ -95,6 +98,9 @@ export function buildWordHtml(
   const wrapBold = (i: number, content: string) =>
     lvl(i).bold ? `<b>${content}</b>` : content;
 
+  // Word heading levels seen on numbered lines (data-heading="K"); each gets a
+  // mapped-style CSS rule below.
+  const headingLevels = new Set<number>();
   const body = fragment
     // Title: a mapped Word heading (class + mso rule) when named, else the app's
     // direct level-1 look inline.
@@ -103,19 +109,34 @@ export function buildWordHtml(
         ? `<p class="MsoTitle">${content}</p>`
         : `<p style="${directStyle(0, 1)}">${wrapBold(0, content)}</p>`,
     )
-    // Nested rows: always the app's per-level look, inline (+ <b> when bold).
+    // Nested rows. A `data-heading="K"` line is a numbered level: map it to the
+    // destination `Heading K` style so Word supplies the live number. Otherwise
+    // the app's per-level look, inline (+ <b> when bold). One regex with an
+    // optional heading group so the two paths never double-match.
     .replace(
-      /<p class="ws-lvl" data-level="([1-9])">([\s\S]*?)<\/p>/g,
-      (_m, d: string, content: string) => {
+      /<p class="ws-lvl" data-level="([1-9])"(?: data-heading="([1-9])")?>([\s\S]*?)<\/p>/g,
+      (_m, d: string, h: string | undefined, content: string) => {
+        if (h) {
+          const k = Number(h);
+          headingLevels.add(k);
+          return `<p class="MsoHeading${k}">${content}</p>`;
+        }
         const i = Number(d) - 1;
         return `<p style="${directStyle(i, Number(d))}">${wrapBold(i, content)}</p>`;
       },
     );
 
-  // The only CSS rule needed is the mapped-title style; everything else is inline.
+  // Mapped-style rules: the title (when named) + each numbered heading level. The
+  // body's plain levels are inline, so they need no rule.
   const titleRule = headingName
     ? `p.MsoTitle{mso-style-name:"${headingName}";mso-outline-level:1}`
     : "";
+  const headingRules = Array.from(headingLevels)
+    .map(
+      (k) =>
+        `p.MsoHeading${k}{mso-style-name:"Heading ${k}";mso-outline-level:${k}}`,
+    )
+    .join("");
   return (
     `<html xmlns:o="urn:schemas-microsoft-com:office:office" ` +
     `xmlns:w="urn:schemas-microsoft-com:office:word" ` +
@@ -127,6 +148,7 @@ export function buildWordHtml(
     // also sets its own font inline.
     `body{overflow-wrap:break-word;font-family:"${bodyFont}"}` +
     titleRule +
+    headingRules +
     `</style>` +
     `</head><body>${body}</body></html>`
   );

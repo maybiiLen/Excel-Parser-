@@ -12,7 +12,7 @@ Wide Excel tables don't fit an 8.5" x 11" Word page — columns bleed off the ed
 
 ## The pivot view
 
-Add fields from the **Add fields** pool, then shape the **Structure**: each field sits at an indent level, and ◄/► move it shallower/deeper. Stack several fields at one level to show them together at the same indent; ▲/▼ reorder and ✕ removes. Rows nest by the levels and **merge** when their values match across a level's fields. Each line reads `Field name: value`. A per-level **Markers** picker prefixes `1.`/`a.`/`i.`/etc. (the first field of a multi-field level carries the marker). An optional **Section title** is the only Word heading (Heading 1); the nested rows are indented body text, so they don't clutter Word's navigation outline. A **View JSON** toggle inspects the raw parsed grid.
+Add fields from the **Add fields** pool, then shape the **Structure**: each field sits at an indent level, and ◄/► move it shallower/deeper. Stack several fields at one level to show them together at the same indent; ▲/▼ reorder and ✕ removes. Rows nest by the levels and **merge** when their values match across a level's fields. Each line reads `Field name: value` — per field, toggle the `Field name:` label off (just the value), or **bold**/**underline** it (`Aa`/`B`/`U`) to make a long list scannable. A per-level **Markers** picker prefixes `1.`/`a.`/`i.`/etc. An optional **Section title** maps to your document's **Heading 1** ("5.0"), and **Number top N levels** maps the top body levels to `Heading 2/3/…` so Word numbers them live (`5.1`, `5.1.1`) on a *Use Destination Styles* paste. A **View JSON** toggle inspects the raw parsed grid.
 
 ## Multiple tables
 
@@ -51,10 +51,10 @@ components/
   RenderedPreview.tsx renders the pivot HTML (live preview; ws-title + [data-level] CSS)
   JsonPreview.tsx    shows the raw parsed Grid as JSON
 lib/
-  types.ts           PivotNode model + raw Grid
+  types.ts           PivotNode/PivotLine + FieldLabel + raw Grid
   parser.ts          SheetJS clipboard -> Grid
   mapper.ts          rowsToPivotTree (Grid + indent buckets -> PivotNode[]) + cellToString
-  renderers.ts       renderPivotTree (tree -> HTML fragment) + numbering helpers
+  renderers.ts       renderPivotTree (tree -> HTML fragment; label format + numbering) + marker helpers
   clipboard.ts       Word-friendly clipboard wrapper (buildWordHtml / htmlToPlainText; HeadingStyle / LevelStyle)
 docs/                OVERVIEW, ARCHITECTURE, ROADMAP
 ```

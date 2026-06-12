@@ -1,4 +1,4 @@
-import type { PivotNode } from "./types";
+import { DEFAULT_FIELD_LABEL, type FieldLabel, type PivotNode } from "./types";
 
 /**
  * Escape the three markup-significant characters in user-derived text.
@@ -13,6 +13,19 @@ import type { PivotNode } from "./types";
  */
 function escapeHtml(s: string): string {
   return s.replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;");
+}
+
+/**
+ * Build the label prefix `Field name: ` for one field, escaped and optionally
+ * wrapped in `<b>`/`<u>` per its `FieldLabel`. The `<b>`/`<u>` are inline runs
+ * (they survive a Word "Use Destination Styles" paste); the name is escaped, the
+ * tags + separator are machine constants.
+ */
+function wrapLabel(name: string, lf: FieldLabel): string {
+  let html = `${escapeHtml(name)}: `;
+  if (lf.underline) html = `<u>${html}</u>`;
+  if (lf.bold) html = `<b>${html}</b>`;
+  return html;
 }
 
 /** Bijective base-26: 0 -> "a", 25 -> "z", 26 -> "aa". */
@@ -92,11 +105,18 @@ export function defaultMarker(depth: number): MarkerKind {
  * (`<p class="ws-lvl" data-level="N">`) map to a body style. When a title is
  * present the nested data starts at level 2 beneath it, otherwise at level 1.
  *
- * Each node carries one or more `lines` (the fields stacked at that indent
- * level). They all render at the same `data-level`; only the FIRST line gets the
+ * Each node carries one or more `lines` (`PivotLine` fields stacked at that
+ * indent level). For each line the label (`name: `) is shown/bolded/underlined
+ * per `fieldLabels[col]` (default: shown, plain) and the value follows; `name`
+ * and `value` are escaped separately. Only the FIRST line of a node gets the
  * level's marker (`markers[depth-1]`, falling back to the legacy cycle, counting
- * up per parent), so the extra stacked fields read as plain body lines. The
- * title is never marked.
+ * up per parent); the rest read as plain body lines. The title is never marked.
+ *
+ * NUMBERING: when `numberDepth > 0`, the FIRST line of each bucket at body depth
+ * `<= numberDepth` is tagged `data-heading="K"` (K = `(title?1:0) + depth`,
+ * clamped 9) so `buildWordHtml` maps it to `Heading K` and Word supplies the live
+ * number (e.g. 5.1, 5.1.1). The app's own text marker is suppressed on those
+ * lines (Word owns the number); deeper levels keep their markers.
  *
  * The nesting depth rides in a `data-level` ATTRIBUTE, not the tag name (HTML
  * only has h1-h6, and a class like `pl-3` would collide with Tailwind padding
@@ -111,18 +131,29 @@ export function renderPivotTree(
   nodes: PivotNode[],
   title?: string,
   markers: MarkerKind[] = [],
+  fieldLabels: Record<number, FieldLabel> = {},
+  numberDepth = 0,
 ): string {
   const blocks: string[] = [];
   const walk = (list: PivotNode[], level: number, depth: number) => {
     const lvl = Math.min(level, 9);
     const kind = markers[depth - 1] ?? defaultMarker(depth);
+    // Word-numbered levels: the bucket's first line becomes a Heading; Word makes
+    // the number, so the app's text marker is suppressed there.
+    const numbered = depth <= numberDepth;
+    const headingK = Math.min((title ? 1 : 0) + depth, 9);
     list.forEach((node, i) => {
       const m = markerText(kind, i);
       node.lines.forEach((line, j) => {
-        // Only the first stacked field carries the marker; the rest are plain.
-        const marker = j === 0 && m ? `${m} ` : "";
+        const lf = fieldLabels[line.col] ?? DEFAULT_FIELD_LABEL;
+        const label =
+          lf.show && line.name !== "" ? wrapLabel(line.name, lf) : "";
+        const value = escapeHtml(line.value);
+        const marker = j === 0 && m && !numbered ? `${m} ` : "";
+        const headingAttr =
+          j === 0 && numbered ? ` data-heading="${headingK}"` : "";
         blocks.push(
-          `<p class="ws-lvl" data-level="${lvl}">${marker}${escapeHtml(line)}</p>`,
+          `<p class="ws-lvl" data-level="${lvl}"${headingAttr}>${marker}${label}${value}</p>`,
         );
       });
       if (node.children.length > 0) walk(node.children, level + 1, depth + 1);

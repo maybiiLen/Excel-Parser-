@@ -21,10 +21,10 @@ The full pivot pipeline is implemented end to end, for multiple tables:
 
 1. **Paste → parse.** A client component captures each paste and parses it with SheetJS into a raw Grid, appending a new table. Tables are managed as cards in a horizontal tab strip (one edited at a time, cap 100).
 2. **Nest → tree.** `rowsToPivotTree` nests rows by an ordered list of **indent buckets** (`pivotLevels`) into an arbitrary-depth `PivotNode` tree. Each bucket is one indent level holding one or more fields; fields stacked in a bucket render at the same indent and rows merge by the composite of that level's values.
-3. **Render → preview.** The tree is rendered to HTML and shown in each card's live preview (or toggle to inspect the raw Grid as JSON). A per-level **Markers** picker adds `1./a./i.`/etc. by depth (only the first field of a multi-field level is marked).
-4. **Copy for Word.** Each card writes `text/html` (+ a `text/plain` fallback) to the clipboard; a combined **Copy all** exports every table as one document. An optional **Section title** is the one Word heading; the nested rows are styled body text.
+3. **Render → preview.** The tree is rendered to HTML and shown in each card's live preview (or toggle to inspect the raw Grid as JSON). A per-level **Markers** picker adds `1./a./i.`/etc.; per field you can hide/bold/underline the `Field name:` label.
+4. **Copy for Word.** Each card writes `text/html` (+ a `text/plain` fallback) to the clipboard; a combined **Copy all** exports every table as one document. The **Section title** maps to your document's Heading 1 ("5.0"), and **Number top N levels** maps the top body levels to `Heading 2/3/…` so Word numbers them live (`5.1`, `5.1.1`) on a *Use Destination Styles* paste; the rest are styled body text.
 
-**Styling.** One shared **per-level** panel ("Heading levels") styles the pivot across all tables: Level 1 = the title, Levels 2-9 = the nested rows by depth — color/font/size/bold each, defaulting to all the same (distinguished by indent). Only the title is a real Word heading; the nested rows stay out of Word's navigation outline.
+**Styling.** One shared **per-level** panel ("Heading levels") styles the pivot across all tables: Level 1 = the title, Levels 2-9 = the nested rows by depth — color/font/size/bold each. The title and the top-N numbered levels become real Word headings (they appear in the Nav pane / TOC); the rest stay out of Word's outline.
 
 See [ARCHITECTURE.md](./ARCHITECTURE.md) for the data model, the pivot, and the pipeline, and [ROADMAP.md](./ROADMAP.md) for status.
 

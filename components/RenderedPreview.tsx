@@ -24,11 +24,14 @@ export function RenderedPreview({
   emptyHint,
   headingStyle,
   bodyFont,
+  numbered = false,
 }: {
   html: string;
   emptyHint?: string;
   headingStyle: HeadingStyle;
   bodyFont: string;
+  /** Whether any level is Word-numbered (shows a "#" placeholder + a hint). */
+  numbered?: boolean;
 }) {
   if (html === "") {
     return (
@@ -50,20 +53,31 @@ export function RenderedPreview({
     return `.ws-preview ${sel}{color:${lv.color};font-family:'${lv.font}';font-size:${lv.size}pt;font-weight:${lv.bold ? 700 : 400}${margin}}`;
   };
   // Title (level 1, no indent); nested rows (per-level look + (n-1)*step indent).
+  // Numbered lines get a muted "#" placeholder where Word will insert the real
+  // number on paste (the browser can't know the document's "5.1").
   const css =
     rule(".ws-title", 0, "") +
     Array.from({ length: 9 }, (_, i) =>
       rule(`[data-level="${i + 1}"]`, i, (i * step).toFixed(2)),
-    ).join("");
+    ).join("") +
+    `.ws-preview [data-heading]::before{content:"# ";opacity:0.4}`;
 
   return (
-    <div
-      aria-label="Rendered section preview"
-      className={previewClasses}
-      style={{ fontFamily: bodyFont }}
-    >
-      <style>{css}</style>
-      <div dangerouslySetInnerHTML={{ __html: html }} />
+    <div>
+      <div
+        aria-label="Rendered section preview"
+        className={previewClasses}
+        style={{ fontFamily: bodyFont }}
+      >
+        <style>{css}</style>
+        <div dangerouslySetInnerHTML={{ __html: html }} />
+      </div>
+      {numbered && (
+        <p className="mt-1 text-xs text-foreground/50">
+          <span className="opacity-40"># </span>= Word fills in the live number
+          (5.1, 5.1.1) on paste with <strong>Use Destination Styles</strong>.
+        </p>
+      )}
     </div>
   );
 }

@@ -4,7 +4,7 @@
 
 import { rowsToPivotTree } from "@/lib/mapper";
 import { renderPivotTree, type MarkerKind } from "@/lib/renderers";
-import type { Grid } from "@/lib/types";
+import type { FieldLabel, Grid } from "@/lib/types";
 
 /** One pasted table: its grid plus the per-table pivot config the user tweaks. */
 export type TableState = {
@@ -20,6 +20,11 @@ export type TableState = {
   pivotLevels: number[][];
   /** Marker style per indent level (index = level − 1; sparse → default cycle). */
   markers: MarkerKind[];
+  /**
+   * Per-field label look, keyed by grid column index (so it persists when a field
+   * is removed and re-added). Absent col → the default (label shown, plain).
+   */
+  fieldLabels: Record<number, FieldLabel>;
   /** Optional title; the one Word heading, above the nested rows. */
   sectionTitle: string;
 };
@@ -130,13 +135,20 @@ export function moveField(levels: number[][], fi: number, dir: -1 | 1): number[]
 }
 
 /**
- * parse -> nest -> render for one table. An optional Section title is the ONLY
- * heading (`<p class="ws-title">`); the nested rows are styled body paragraphs
- * beneath it. Empty-guard first so a title never renders over nothing. Pure: the
- * single source used by both the card preview and the combined export.
+ * parse -> nest -> render for one table. The optional Section title and the top
+ * `numberDepth` levels become Word headings; the rest are styled body paragraphs.
+ * Empty-guard first so a title never renders over nothing. Pure: the single source
+ * used by both the card preview and the combined export, so both must pass the
+ * shared `numberDepth`.
  */
-export function tableToHtml(t: TableState): string {
+export function tableToHtml(t: TableState, numberDepth = 0): string {
   const tree = rowsToPivotTree(t.grid, t.pivotLevels);
   if (tree.length === 0) return "";
-  return renderPivotTree(tree, t.sectionTitle.trim() || undefined, t.markers);
+  return renderPivotTree(
+    tree,
+    t.sectionTitle.trim() || undefined,
+    t.markers,
+    t.fieldLabels ?? {},
+    numberDepth,
+  );
 }

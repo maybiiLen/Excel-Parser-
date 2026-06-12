@@ -60,6 +60,10 @@ export function PasteInput() {
   // `mso-style-name` so a "Use Destination Styles" paste adopts the destination
   // document's styles. Blank → the app's direct per-level look.
   const [headingStyleName, setHeadingStyleName] = useState<string>("Heading 1");
+  // Number the top N body indent levels as Word headings (Heading 2, 3, ...) so
+  // Word numbers them live (5.1, 5.1.1, ...). 0 = off (app text markers instead).
+  // Shared across tables, like the heading style.
+  const [numberDepth, setNumberDepth] = useState<number>(0);
   const headingStyle = useMemo<HeadingStyle>(() => {
     const clampPt = (s: string, fallback: number) => {
       const n = parseInt(s, 10);
@@ -114,6 +118,7 @@ export function PasteInput() {
         grid: rows,
         pivotLevels: [], // nothing placed yet; user builds the outline
         markers: [], // sparse -> default 1./a./i. cycle until the user picks
+        fieldLabels: {}, // per-col label look; default (shown, plain) until edited
         sectionTitle: "",
       };
       setTables((prev) => [...prev, next]);
@@ -159,7 +164,7 @@ export function PasteInput() {
       setTimeout(() => setCopyAllState("idle"), 2000);
       return;
     }
-    const combined = tables.map(tableToHtml).join("\n");
+    const combined = tables.map((t) => tableToHtml(t, numberDepth)).join("\n");
     try {
       const item = new ClipboardItem({
         "text/html": new Blob([buildWordHtml(combined, headingStyle, bodyFont)], {
@@ -287,7 +292,34 @@ export function PasteInput() {
                 className="w-32 rounded-md border border-foreground/20 px-2 py-1 text-sm text-foreground"
               />
             </label>
+            <label className="flex items-center gap-1.5">
+              Number top
+              <select
+                value={Math.min(numberDepth, maxDepth)}
+                onChange={(e) => setNumberDepth(Number(e.target.value))}
+                aria-label="Number the top N levels as Word headings"
+                className="rounded-md border border-foreground/20 px-2 py-1 text-sm text-foreground"
+              >
+                {Array.from({ length: maxDepth + 1 }, (_, n) => (
+                  <option key={n} value={n}>
+                    {n === 0 ? "off" : n}
+                  </option>
+                ))}
+              </select>
+              levels
+            </label>
           </div>
+          {numberDepth > 0 && (
+            <p className="text-xs text-foreground/50">
+              The top {numberDepth} {numberDepth === 1 ? "level" : "levels"} map
+              to <strong>Heading 2{numberDepth > 1 ? "…" : ""}</strong>, so Word
+              numbers them <strong>5.1 / 5.1.1</strong> from your
+              document&rsquo;s heading numbering (needs{" "}
+              <strong>Use Destination Styles</strong>; the preview can&rsquo;t
+              show the number). Numbered items also appear in Word&rsquo;s
+              navigation pane / table of contents.
+            </p>
+          )}
 
           <div className="flex flex-col gap-2 rounded-lg border border-foreground/15 bg-foreground/[0.02] p-3 text-sm text-foreground/70">
             <div className="flex flex-wrap items-center justify-between gap-2">
@@ -438,6 +470,7 @@ export function PasteInput() {
               table={activeTable}
               headingStyle={headingStyle}
               bodyFont={bodyFont}
+              numberDepth={numberDepth}
               onChange={(patch) => patchTable(activeTable.id, patch)}
             />
           )}
