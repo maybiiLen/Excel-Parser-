@@ -50,22 +50,37 @@ export function RenderedPreview({
     return `.ws-preview ${sel}{color:${lv.color};font-family:'${lv.font}';font-size:${lv.size}pt;font-weight:${lv.bold ? 700 : 400}${margin}}`;
   };
   // Title (level 1, no indent); nested rows (per-level look + (n-1)*step indent).
-  // Any multilevel numbers are already plain text in the fragment, so the preview
-  // shows the real numbers verbatim (no placeholder).
+  // App-drawn multilevel numbers are plain text in the fragment, so the preview
+  // shows them verbatim. A heading row (`data-heading`) instead sits flush-left and
+  // bold (it loses the body indent in Word) with a muted "#" where Word inserts the
+  // live heading number on paste.
   const css =
     rule(".ws-title", 0, "") +
     Array.from({ length: 9 }, (_, i) =>
       rule(`[data-level="${i + 1}"]`, i, (i * step).toFixed(2)),
-    ).join("");
+    ).join("") +
+    `.ws-preview [data-heading]{margin-left:0;font-weight:700}` +
+    `.ws-preview [data-heading]::before{content:"# ";opacity:0.4;font-weight:400}`;
+
+  const hasHeadings = html.includes("data-heading");
 
   return (
-    <div
-      aria-label="Rendered section preview"
-      className={previewClasses}
-      style={{ fontFamily: bodyFont }}
-    >
-      <style>{css}</style>
-      <div dangerouslySetInnerHTML={{ __html: html }} />
+    <div>
+      <div
+        aria-label="Rendered section preview"
+        className={previewClasses}
+        style={{ fontFamily: bodyFont }}
+      >
+        <style>{css}</style>
+        <div dangerouslySetInnerHTML={{ __html: html }} />
+      </div>
+      {hasHeadings && (
+        <p className="mt-1 text-xs text-muted">
+          <span className="opacity-40"># </span>= Word fills in the heading number
+          (e.g. 5.1) on a <strong>Use Destination Styles</strong> paste; that row
+          also appears in the Navigation pane and is collapsible.
+        </p>
+      )}
     </div>
   );
 }

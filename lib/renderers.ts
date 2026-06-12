@@ -152,6 +152,7 @@ export const DEFAULT_NUMBERING: NumberingConfig = {
 function multilevelNumbers(
   nodes: PivotNode[],
   numbering: NumberingConfig,
+  headingLevels: boolean[],
 ): Map<PivotNode, string> {
   const out = new Map<PivotNode, string>();
   const start = String(numbering.start || "1");
@@ -170,7 +171,14 @@ function multilevelNumbers(
     parentBase: string,
     counter: { n: number },
   ) => {
-    const shown = numbering.levels[depth - 1] !== false;
+    // A level establishes a numbered BASE (its children count from 1 under it) if
+    // it is shown for numbering OR mapped to a Word heading -- a heading is a
+    // section boundary, so Word numbers it and the app's deeper rows must RESET
+    // under each one (5.1 -> 5.1.1, 5.2 -> 5.2.1), even though the heading's own
+    // number isn't drawn by the app. Only a plain hidden level (not a heading) is
+    // transparent: its children continue the grandparent's sequence.
+    const shown =
+      headingLevels[depth - 1] === true || numbering.levels[depth - 1] !== false;
     for (const node of list) {
       if (shown) {
         const idx = counter.n++;
@@ -224,6 +232,14 @@ function multilevelNumbers(
  * of only the shown levels -- no gaps (1.0 -> 1.1, never 1.1.1 under a hidden 1.1)
  * and no collisions (see `multilevelNumbers`).
  *
+ * HEADING ROWS (`headingLevels[depth-1]`): a level the user mapped to a Word
+ * heading. Its FIRST line is tagged `data-heading="K"` (K = `(titleIsHeading?1:0)
+ * + depth`, clamped 9 -- a body heading nests one under a `Heading 1` title) so
+ * `buildWordHtml` maps it to the destination `Heading K` style (nav pane +
+ * collapsible). The app's number/marker is SUPPRESSED on those rows (Word supplies
+ * the number), but the number PATH still computes so deeper body rows still nest
+ * (TYPE → Word "5.1", TITLE → app "5.1.1"). Usually just the top level or two.
+ *
  * BLANK LINE AFTER (`breakAfter[depth-1]`): after a node's WHOLE subtree, an
  * empty spacer paragraph (`<p ... data-level="N">&#160;</p>` -- a non-breaking
  * space, no marker/number/label) is pushed, so both the preview and the Word
@@ -248,17 +264,25 @@ export function renderPivotTree(
   fieldLabels: Record<number, FieldLabel> = {},
   breakAfter: boolean[] = [],
   numbering: NumberingConfig = DEFAULT_NUMBERING,
+  headingLevels: boolean[] = [],
+  titleIsHeading = false,
 ): string {
   const numbered = numbering.mode === "multilevel";
   // Precompute each numbered node's display number (transparent hidden levels, top
   // level ".0"). Absent => this node's level is hidden or numbering is off.
   const numberOf = numbered
-    ? multilevelNumbers(nodes, numbering)
+    ? multilevelNumbers(nodes, numbering, headingLevels)
     : null;
   const blocks: string[] = [];
   const walk = (list: PivotNode[], level: number, depth: number) => {
     const lvl = Math.min(level, 9);
     const kind = markers[depth - 1] ?? defaultMarker(depth);
+    // Heading rows: this level is mapped to a Word heading (nav + collapsible).
+    // Word supplies its number, so the app's number/marker is suppressed on it; the
+    // number PATH still computes (via numberOf), so deeper body rows nest correctly.
+    // headingK = the Word heading level (body nests one under a Heading-1 title).
+    const isHeading = headingLevels[depth - 1] === true;
+    const headingK = Math.min((titleIsHeading ? 1 : 0) + depth, 9);
     list.forEach((node, i) => {
       // Markers render only when numbering is off; a numbered node shows its
       // precomputed number instead (and a hidden-level node shows neither).
@@ -270,9 +294,10 @@ export function renderPivotTree(
         const label = showLabel ? wrapLabel(line.name, lf) : "";
         const value = escapeHtml(line.value);
         // First line only: the level's number (when shown) else its marker (only
-        // when numbering is off); a numbered-but-hidden level renders plain.
+        // when numbering is off). A heading row shows neither (Word numbers it); a
+        // numbered-but-hidden level renders plain.
         const lead =
-          j === 0
+          j === 0 && !isHeading
             ? num
               ? `${escapeHtml(num)} `
               : !numbered && m
@@ -283,8 +308,12 @@ export function renderPivotTree(
         // category also bolds its number (one `<b>` run, survives a Word paste).
         const prefix =
           lead && showLabel && lf.bold ? `<b>${lead}</b>` : lead;
+        // A heading row's FIRST line carries data-heading so buildWordHtml maps it
+        // to the destination "Heading K" style.
+        const headingAttr =
+          j === 0 && isHeading ? ` data-heading="${headingK}"` : "";
         blocks.push(
-          `<p class="ws-lvl" data-level="${lvl}">${prefix}${label}${value}</p>`,
+          `<p class="ws-lvl" data-level="${lvl}"${headingAttr}>${prefix}${label}${value}</p>`,
         );
       });
       if (node.children.length > 0) walk(node.children, level + 1, depth + 1);

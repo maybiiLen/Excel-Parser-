@@ -2,7 +2,7 @@
 
 import { useMemo, useRef, useState, type ClipboardEvent } from "react";
 import { parseClipboard } from "@/lib/parser";
-import { buildWordHtml, htmlToPlainText } from "@/lib/clipboard";
+import { buildWordHtml, htmlToPlainText, isHeadingStyleSet } from "@/lib/clipboard";
 import type { HeadingStyle, LevelStyle } from "@/lib/clipboard";
 import { DEFAULT_NUMBERING } from "@/lib/renderers";
 import { tableToHtml, type TableState } from "./tableModel";
@@ -126,6 +126,7 @@ export function PasteInput() {
         sortDirs: {}, // per-col sort; absent col -> off (first-seen order)
         breakAfter: [], // per-level "blank line after"; default off
         numbering: DEFAULT_NUMBERING, // app-drawn multilevel numbers; off by default
+        headingLevels: [], // per-level "make a Word heading"; default none
         sectionTitle: "",
       };
       setTables((prev) => [...prev, next]);
@@ -172,7 +173,10 @@ export function PasteInput() {
       setTimeout(() => setCopyAllState("idle"), 2000);
       return;
     }
-    const combined = tables.map((t) => tableToHtml(t)).join("\n");
+    const titleIsHeading = isHeadingStyleSet(headingStyleName);
+    const combined = tables
+      .map((t) => tableToHtml(t, titleIsHeading))
+      .join("\n");
     try {
       const item = new ClipboardItem({
         "text/html": new Blob([buildWordHtml(combined, headingStyle, bodyFont)], {

@@ -1,7 +1,7 @@
 "use client";
 
 import { memo, useMemo, useState } from "react";
-import { buildWordHtml, htmlToPlainText } from "@/lib/clipboard";
+import { buildWordHtml, htmlToPlainText, isHeadingStyleSet } from "@/lib/clipboard";
 import type { HeadingStyle } from "@/lib/clipboard";
 import { defaultMarker, type MarkerKind } from "@/lib/renderers";
 import { DEFAULT_FIELD_LABEL, type FieldLabel } from "@/lib/types";
@@ -79,7 +79,14 @@ function TableCardInner({ table, headingStyle, bodyFont, onChange }: Props) {
 
   // The whole derive-from-state chain for this one table; recomputed only when
   // this table's record changes (it carries all the per-table config).
-  const html = useMemo(() => tableToHtml(table), [table]);
+  // Whether the title is a real Word heading (a shared Heading style is set); it
+  // sets the body heading-row level (title Heading 1 → body Heading 2), so the
+  // preview uses the same value the export does.
+  const titleIsHeading = isHeadingStyleSet(headingStyle.headingStyleName);
+  const html = useMemo(
+    () => tableToHtml(table, titleIsHeading),
+    [table, titleIsHeading],
+  );
 
   // Toggle part of one field's label look (keyed by grid column).
   function patchLabel(col: number, patch: Partial<FieldLabel>) {
@@ -484,6 +491,37 @@ function TableCardInner({ table, headingStyle, bodyFont, onChange }: Props) {
                     aria-label={`Show the number on indent level ${i + 1}`}
                   />
                   Lv {i + 1}
+                </label>
+              ))}
+            </div>
+          )}
+
+          {/* Word heading: map a level's rows to a destination Heading style so
+              they enter the document outline (nav pane + collapsible, flush-left).
+              Word supplies their number, so the app number/marker is suppressed on
+              those rows. Usually just the top level or two; labelled by field name. */}
+          {pivotLevels.length > 0 && (
+            <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 text-sm text-foreground/70">
+              <span className="text-foreground/60">
+                Word heading{" "}
+                <span className="text-muted">(in nav, collapsible)</span>:
+              </span>
+              {pivotLevels.map((bucket, i) => (
+                <label
+                  key={i}
+                  className="flex items-center gap-1.5 text-xs text-foreground/60"
+                >
+                  <input
+                    type="checkbox"
+                    checked={table.headingLevels[i] === true}
+                    onChange={(e) => {
+                      const next = [...table.headingLevels];
+                      next[i] = e.target.checked;
+                      onChange({ headingLevels: next });
+                    }}
+                    aria-label={`Make indent level ${i + 1} a Word heading`}
+                  />
+                  {headers[bucket[0]] || `Lv ${i + 1}`}
                 </label>
               ))}
             </div>

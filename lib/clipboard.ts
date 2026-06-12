@@ -47,6 +47,16 @@ function sanitizeStyleName(s: string): string {
   return s.replace(/[^A-Za-z0-9 .-]/g, "").trim();
 }
 
+/**
+ * Whether a Heading style is configured for the title (a non-empty name after
+ * sanitizing). A body level mapped to a Word heading nests one level under the
+ * title's `Heading 1`, so callers pass this the same boolean the title mapping
+ * branches on (it sets the body heading level: title Heading 1 → body Heading 2).
+ */
+export function isHeadingStyleSet(name: string): boolean {
+  return sanitizeStyleName(name) !== "";
+}
+
 // Guard if a level entry is ever absent (callers pass a full 9-entry array).
 const FALLBACK_LEVEL: LevelStyle = {
   color: "#000000",
@@ -64,7 +74,12 @@ const FALLBACK_LEVEL: LevelStyle = {
  * Styles" paste adopts the destination document's heading + its numbering);
  * blank = the app's direct level-1 look.
  *
- * Every body paragraph uses the app's direct per-level look
+ * A body level the user mapped to a Word heading arrives as `data-heading="K"` and
+ * becomes `<p class="MsoHeadingK">` + a `mso-style-name:"Heading K"` rule, so a
+ * "Use Destination Styles" paste adds just those rows to the document outline (nav
+ * pane + collapsible) and Word supplies their number.
+ *
+ * Every OTHER body paragraph uses the app's direct per-level look
  * (color/font/size/bold) + indent + compact spacing, emitted as INLINE formatting
  * on each `<p>` (and `<b>`/`<u>` runs for the label) rather than CSS classes. A
  * "Use Destination Styles" paste discards class/style-name formatting it can't map
@@ -97,6 +112,9 @@ export function buildWordHtml(
   const wrapBold = (i: number, content: string) =>
     lvl(i).bold ? `<b>${content}</b>` : content;
 
+  // Body heading levels seen on `data-heading="K"` rows (levels the user mapped to
+  // a Word heading for nav + collapsibility); each gets a mapped-style rule below.
+  const bodyHeadings = new Set<number>();
   const body = fragment
     // Title: a mapped Word heading (class + mso rule) when named, else the app's
     // direct level-1 look inline.
@@ -105,22 +123,37 @@ export function buildWordHtml(
         ? `<p class="MsoTitle">${content}</p>`
         : `<p style="${directStyle(0, 1)}">${wrapBold(0, content)}</p>`,
     )
-    // Nested rows: the app's per-level look, inline (+ <b> when bold). The spacer
-    // paragraph (nbsp, data-level only) matches this same shape and passes through
-    // as an ordinary inline-styled body paragraph, so it needs no special-casing.
+    // Nested rows. A `data-heading="K"` line is a level mapped to a Word heading:
+    // map it to the destination "Heading K" style so a Use-Destination-Styles paste
+    // adds it to the outline (nav + collapsible) and Word supplies its number.
+    // Otherwise the app's per-level look, inline (+ <b> when bold). One regex with
+    // an optional heading group so the two paths never double-match; the spacer
+    // paragraph (nbsp, data-level only) passes through the else branch as an
+    // ordinary inline body paragraph.
     .replace(
-      /<p class="ws-lvl" data-level="([1-9])">([\s\S]*?)<\/p>/g,
-      (_m, d: string, content: string) => {
+      /<p class="ws-lvl" data-level="([1-9])"(?: data-heading="([1-9])")?>([\s\S]*?)<\/p>/g,
+      (_m, d: string, h: string | undefined, content: string) => {
+        if (h) {
+          const k = Number(h);
+          bodyHeadings.add(k);
+          return `<p class="MsoHeading${k}">${content}</p>`;
+        }
         const i = Number(d) - 1;
         return `<p style="${directStyle(i, Number(d))}">${wrapBold(i, content)}</p>`;
       },
     );
 
-  // The only mapped-style rule is the title (when named); every body level is
-  // inline, so it needs no rule.
+  // Mapped-style rules: the title (when named) + each body heading level seen.
+  // Every plain body level is inline, so it needs no rule.
   const titleRule = headingName
     ? `p.MsoTitle{mso-style-name:"${headingName}";mso-outline-level:1}`
     : "";
+  const headingRules = Array.from(bodyHeadings)
+    .map(
+      (k) =>
+        `p.MsoHeading${k}{mso-style-name:"Heading ${k}";mso-outline-level:${k}}`,
+    )
+    .join("");
   return (
     `<html xmlns:o="urn:schemas-microsoft-com:office:office" ` +
     `xmlns:w="urn:schemas-microsoft-com:office:word" ` +
@@ -132,6 +165,7 @@ export function buildWordHtml(
     // also sets its own font inline.
     `body{overflow-wrap:break-word;font-family:"${bodyFont}"}` +
     titleRule +
+    headingRules +
     `</style>` +
     `</head><body>${body}</body></html>`
   );

@@ -49,6 +49,14 @@ export type TableState = {
    * path (5, 5.1, 5.1.1) as plain body text and suppresses that node's marker.
    */
   numbering: NumberingConfig;
+  /**
+   * "Make this level a Word heading" toggle per indent level (index = level − 1,
+   * like `markers`). When on, that level's rows map to a destination `Heading K`
+   * style (nav pane + collapsible, flush-left), and Word supplies their number
+   * (the app's number/marker is suppressed on them). Usually just the top level
+   * or two; sparse/short → not a heading.
+   */
+  headingLevels: boolean[];
   /** Optional title; the one Word heading, above the nested rows. */
   sectionTitle: string;
 };
@@ -165,10 +173,12 @@ export function moveField(levels: number[][], fi: number, dir: -1 | 1): number[]
  * used by both the card preview and the combined export, so both stay identical.
  *
  * The table's own config threads in: `sortDirs` reorders sibling groups in the
- * mapper post-pass, then `breakAfter` (per-level spacer) and `numbering`
- * (app-drawn static multilevel numbers) drive the renderer.
+ * mapper post-pass, then `breakAfter` (per-level spacer), `numbering` (app-drawn
+ * static multilevel numbers), and `headingLevels` (levels mapped to Word headings)
+ * drive the renderer. `titleIsHeading` (whether a Heading style is set for the
+ * title) sets the body heading level, so callers pass it from the shared style.
  */
-export function tableToHtml(t: TableState): string {
+export function tableToHtml(t: TableState, titleIsHeading = false): string {
   const tree = rowsToPivotTree(t.grid, t.pivotLevels, t.sortDirs ?? {});
   if (tree.length === 0) return "";
   return renderPivotTree(
@@ -178,5 +188,7 @@ export function tableToHtml(t: TableState): string {
     t.fieldLabels ?? {},
     t.breakAfter ?? [],
     t.numbering ?? DEFAULT_NUMBERING,
+    t.headingLevels ?? [],
+    titleIsHeading,
   );
 }
