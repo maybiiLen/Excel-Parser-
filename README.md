@@ -12,7 +12,7 @@ Wide Excel tables don't fit an 8.5" x 11" Word page — columns bleed off the ed
 
 ## The pivot view
 
-Add fields from the **Add fields** pool, then shape the **Structure**: each field sits at an indent level, and ◄/► move it shallower/deeper. Stack several fields at one level to show them together at the same indent; ▲/▼ reorder and ✕ removes. Rows nest by the levels and **merge** when their values match across a level's fields. Each line reads `Field name: value` — per field, toggle the `Field name:` label off (just the value), or **bold**/**underline** it (`Aa`/`B`/`U`) to make a long list scannable. A per-level **Markers** picker prefixes `1.`/`a.`/`i.`/etc. An optional **Section title** maps to your document's **Heading 1** ("5.0"), and **Number top N levels** maps the top body levels to `Heading 2/3/…` so Word numbers them live (`5.1`, `5.1.1`) on a *Use Destination Styles* paste. A **View JSON** toggle inspects the raw parsed grid.
+Add fields from the **Add fields** pool, then shape the **Structure**: each field sits at an indent level, and ◄/► move it shallower/deeper. Stack several fields at one level to show them together at the same indent; ▲/▼ reorder and ✕ removes. Rows nest by the levels and **merge** when their values match across a level's fields. Each line reads `Field name: value` — per field, toggle the `Field name:` label off (just the value), or **bold**/**underline** it (`Aa`/`B`/`U`) to make a long list scannable, and **sort** the groups at that field (↕ off / ↑ ascending / ↓ descending; numeric *and* text aware, so `2` sorts before `10`). A per-level **Markers** picker prefixes `1.`/`a.`/`i.`/etc., and a **Blank line after each section** toggle adds a blank line between top-level groups. A per-table **Numbering** control draws static **multilevel numbers** (top level `5.0`, then `5.1`, `5.1.1`, from a chosen Start) as plain body text — not Word auto-numbering, so nothing becomes a Word heading and the preview shows the real numbers; when on, the number replaces that level's marker, and a per-level **Number level** checkbox hides a level's number. Hidden levels are *transparent*: the numbers follow the gap (e.g. number the type + text but hide the title → `1.0` then `1.1`, `1.2`, never `1.1.1` under a missing `1.1`). An optional **Section title** maps to your document's **Heading 1** ("5.0") on a *Use Destination Styles* paste. A **View JSON** toggle inspects the raw parsed grid.
 
 ## Multiple tables
 
@@ -53,8 +53,8 @@ components/
 lib/
   types.ts           PivotNode/PivotLine + FieldLabel + raw Grid
   parser.ts          SheetJS clipboard -> Grid
-  mapper.ts          rowsToPivotTree (Grid + indent buckets -> PivotNode[]) + cellToString
-  renderers.ts       renderPivotTree (tree -> HTML fragment; label format + numbering) + marker helpers
+  mapper.ts          rowsToPivotTree (Grid + indent buckets + sortDirs -> PivotNode[]; sort post-pass) + cellToString
+  renderers.ts       renderPivotTree (tree -> HTML fragment; labels + markers + breakAfter spacers + static multilevel numbering) + marker/numbering helpers
   clipboard.ts       Word-friendly clipboard wrapper (buildWordHtml / htmlToPlainText; HeadingStyle / LevelStyle)
 docs/                OVERVIEW, ARCHITECTURE, ROADMAP
 ```

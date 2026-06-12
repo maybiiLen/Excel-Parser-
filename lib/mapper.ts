@@ -12,6 +12,57 @@ function cellToString(cell: unknown): string {
 }
 
 /**
+ * The sort field for one bucket: the FIRST column in bucket order whose
+ * `sortDirs` entry is set. Lets a stacked level be sorted by any one of its
+ * fields; `null` (no column set) means leave that level's order untouched.
+ */
+function findSortCol(
+  bucket: number[],
+  sortDirs: Record<number, "asc" | "desc">,
+): { col: number; dir: "asc" | "desc" } | null {
+  for (const col of bucket) {
+    const dir = sortDirs[col];
+    if (dir) return { col, dir };
+  }
+  return null;
+}
+
+/** A node's value for a given column (the matching `PivotLine`, else ""). */
+function lineValue(node: PivotNode, col: number): string {
+  return node.lines.find((l) => l.col === col)?.value ?? "";
+}
+
+/**
+ * Recursive post-pass: reorder each node's children (and the roots) by the sort
+ * field for that child level. One comparator (`localeCompare` with `numeric:true,
+ * sensitivity:"base"`) auto-handles numbers and text -- "2" before "10", text
+ * alphabetical + case-insensitive -- reversed for "desc". A level with no sort
+ * column set keeps first-seen order; the language-guaranteed STABLE sort keeps
+ * equal-keyed siblings in first-seen order too. Mutates the freshly-built private
+ * tree in place (safe: it is not shared); `levels`/`sortDirs` stay read-only.
+ */
+function sortTree(
+  nodes: PivotNode[],
+  levels: number[][],
+  sortDirs: Record<number, "asc" | "desc">,
+  depth: number,
+): void {
+  const sort = findSortCol(levels[depth] ?? [], sortDirs);
+  if (sort) {
+    const sign = sort.dir === "desc" ? -1 : 1;
+    nodes.sort(
+      (a, b) =>
+        sign *
+        lineValue(a, sort.col).localeCompare(lineValue(b, sort.col), undefined, {
+          numeric: true,
+          sensitivity: "base",
+        }),
+    );
+  }
+  for (const node of nodes) sortTree(node.children, levels, sortDirs, depth + 1);
+}
+
+/**
  * Pivot mapper (Excel "Rows area"): nest rows into an arbitrary-depth tree by an
  * ORDERED list of INDENT BUCKETS. `levels[0]` is the outermost indent level;
  * within each group rows nest by `levels[1]`; and so on. Each bucket holds one or
@@ -28,10 +79,19 @@ function cellToString(cell: unknown): string {
  * a per-level `Map` (held in a `WeakMap` keyed by node, discarded after the
  * build) is only a dedup index, never the ordered output.
  *
+ * `sortDirs` (keyed by grid column) then drives an OPTIONAL post-pass that
+ * reorders SIBLING groups at each level by the bucket's first sort-enabled field
+ * (numeric + text aware, case-insensitive; "desc" reverses). A level with no
+ * sort column keeps first-seen order; ties keep first-seen order (stable sort).
+ *
  * Resilient like the other mappers: never throws (`row?.[col]` + `cellToString`).
  * Empty `levels`, or an empty/header-only grid, yields `[]`.
  */
-export function rowsToPivotTree(rows: Grid, levels: number[][]): PivotNode[] {
+export function rowsToPivotTree(
+  rows: Grid,
+  levels: number[][],
+  sortDirs: Record<number, "asc" | "desc"> = {},
+): PivotNode[] {
   if (levels.length === 0) return [];
   const [header = [], ...dataRows] = rows;
   const headers = header.map(cellToString);
@@ -46,22 +106,24 @@ export function rowsToPivotTree(rows: Grid, levels: number[][]): PivotNode[] {
     let siblings = roots;
     let index = rootIndex;
     for (const bucket of levels) {
-      // A bucket's identity is the combination of all its fields' values.
-      // JSON.stringify gives a collision-free key (distinct value tuples always
-      // serialize differently, quotes/brackets escaped). The key is internal;
-      // `lines` below carry the human labels.
-      const values = bucket.map(
-        (col) => cellToString(row?.[col]).trim() || "(blank)",
-      );
-      const key = JSON.stringify(values);
+      // A bucket's identity is the combination of all its fields' RAW trimmed
+      // values. JSON.stringify gives a collision-free key (distinct value tuples
+      // always serialize differently, quotes/brackets escaped). Keying on the raw
+      // value -- empty string included -- keeps a truly-empty cell distinct from a
+      // cell that literally contains the text "(blank)"; the sentinel is only a
+      // DISPLAY value, applied to `lines` below. The key is internal; `lines`
+      // carry the human labels.
+      const raw = bucket.map((col) => cellToString(row?.[col]).trim());
+      const key = JSON.stringify(raw);
       let node = index.get(key);
       if (!node) {
         // Keep label (header name) and value separate + raw; the renderer escapes
-        // and formats them (show/hide/bold/underline the label) per field.
+        // and formats them (show/hide/bold/underline the label) per field. A blank
+        // cell shows as "(blank)".
         const lines: PivotLine[] = bucket.map((col, i) => ({
           col,
           name: headers[col]?.trim() ?? "",
-          value: values[i],
+          value: raw[i] || "(blank)",
         }));
         node = { lines, children: [] };
         siblings.push(node); // first sight -> preserve insertion order
@@ -73,5 +135,7 @@ export function rowsToPivotTree(rows: Grid, levels: number[][]): PivotNode[] {
     }
   }
 
+  // Reorder siblings by the per-level sort field (no-op when no dir is set).
+  sortTree(roots, levels, sortDirs, 0);
   return roots;
 }

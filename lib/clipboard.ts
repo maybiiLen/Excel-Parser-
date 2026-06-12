@@ -1,9 +1,10 @@
 // Word-output step: wrap the renderer's HTML fragment as Word-flavored HTML for
-// the clipboard ("Copy for Word"). The title (when a Heading style is named) and
-// any Word-numbered levels (`data-heading`) map to destination Heading styles so
-// Word numbers them live; every other body paragraph is plain, directly-formatted
-// text. renderPivotTree returns a bare fragment (no <html>/<head>/<body>); the
-// browser's ClipboardItem writes the Windows CF_HTML header for us.
+// the clipboard ("Copy for Word"). The title maps to a destination Heading style
+// when a Heading style is named (so a "Use Destination Styles" paste adopts the
+// document's heading); every body paragraph is plain, directly-formatted text
+// (any multilevel numbers are already plain text in the fragment). renderPivotTree
+// returns a bare fragment (no <html>/<head>/<body>); the browser's ClipboardItem
+// writes the Windows CF_HTML header for us.
 
 /**
  * How one heading level should look -- one entry per depth (index 0 = level 1).
@@ -34,13 +35,16 @@ export type HeadingStyle = {
 };
 
 /**
- * Make a string safe inside `mso-style-name:"..."`. A Word style name is short
- * plain text; strip the quote/angle-bracket characters that could break out of
- * the attribute (keep spaces/dots so names like "Heading 1" still match). The
- * inputs are form-controlled; this is belt-and-suspenders.
+ * Make a string safe inside the `mso-style-name:"..."` declaration in the
+ * clipboard `<style>`. A real Word style name needs only letters, digits, spaces,
+ * dots, and hyphens, so we ALLOW-LIST that set and drop everything else. That
+ * removes every character with CSS meaning -- the closing quote, `{` `}` `;`,
+ * backslash, angle brackets, comment sequences, and newlines/control chars -- so a
+ * crafted name can't terminate the string and inject a rule into the document
+ * copied to the clipboard. Names like "Heading 1" still pass unchanged.
  */
 function sanitizeStyleName(s: string): string {
-  return s.replaceAll('"', "").replaceAll("<", "").replaceAll(">", "").trim();
+  return s.replace(/[^A-Za-z0-9 .-]/g, "").trim();
 }
 
 // Guard if a level entry is ever absent (callers pass a full 9-entry array).
@@ -60,12 +64,7 @@ const FALLBACK_LEVEL: LevelStyle = {
  * Styles" paste adopts the destination document's heading + its numbering);
  * blank = the app's direct level-1 look.
  *
- * Each NUMBERED level (`<p ... data-heading="K">`, set by the renderer when
- * `numberDepth > 0`) maps to `Heading K` the same way, so Word numbers it live
- * (5.1, 5.1.1, ...). The exact number comes from the destination template's
- * heading numbering, only on a "Use Destination Styles" paste.
- *
- * Every OTHER body paragraph uses the app's direct per-level look
+ * Every body paragraph uses the app's direct per-level look
  * (color/font/size/bold) + indent + compact spacing, emitted as INLINE formatting
  * on each `<p>` (and `<b>`/`<u>` runs for the label) rather than CSS classes. A
  * "Use Destination Styles" paste discards class/style-name formatting it can't map
@@ -98,9 +97,6 @@ export function buildWordHtml(
   const wrapBold = (i: number, content: string) =>
     lvl(i).bold ? `<b>${content}</b>` : content;
 
-  // Word heading levels seen on numbered lines (data-heading="K"); each gets a
-  // mapped-style CSS rule below.
-  const headingLevels = new Set<number>();
   const body = fragment
     // Title: a mapped Word heading (class + mso rule) when named, else the app's
     // direct level-1 look inline.
@@ -109,34 +105,22 @@ export function buildWordHtml(
         ? `<p class="MsoTitle">${content}</p>`
         : `<p style="${directStyle(0, 1)}">${wrapBold(0, content)}</p>`,
     )
-    // Nested rows. A `data-heading="K"` line is a numbered level: map it to the
-    // destination `Heading K` style so Word supplies the live number. Otherwise
-    // the app's per-level look, inline (+ <b> when bold). One regex with an
-    // optional heading group so the two paths never double-match.
+    // Nested rows: the app's per-level look, inline (+ <b> when bold). The spacer
+    // paragraph (nbsp, data-level only) matches this same shape and passes through
+    // as an ordinary inline-styled body paragraph, so it needs no special-casing.
     .replace(
-      /<p class="ws-lvl" data-level="([1-9])"(?: data-heading="([1-9])")?>([\s\S]*?)<\/p>/g,
-      (_m, d: string, h: string | undefined, content: string) => {
-        if (h) {
-          const k = Number(h);
-          headingLevels.add(k);
-          return `<p class="MsoHeading${k}">${content}</p>`;
-        }
+      /<p class="ws-lvl" data-level="([1-9])">([\s\S]*?)<\/p>/g,
+      (_m, d: string, content: string) => {
         const i = Number(d) - 1;
         return `<p style="${directStyle(i, Number(d))}">${wrapBold(i, content)}</p>`;
       },
     );
 
-  // Mapped-style rules: the title (when named) + each numbered heading level. The
-  // body's plain levels are inline, so they need no rule.
+  // The only mapped-style rule is the title (when named); every body level is
+  // inline, so it needs no rule.
   const titleRule = headingName
     ? `p.MsoTitle{mso-style-name:"${headingName}";mso-outline-level:1}`
     : "";
-  const headingRules = Array.from(headingLevels)
-    .map(
-      (k) =>
-        `p.MsoHeading${k}{mso-style-name:"Heading ${k}";mso-outline-level:${k}}`,
-    )
-    .join("");
   return (
     `<html xmlns:o="urn:schemas-microsoft-com:office:office" ` +
     `xmlns:w="urn:schemas-microsoft-com:office:word" ` +
@@ -148,7 +132,6 @@ export function buildWordHtml(
     // also sets its own font inline.
     `body{overflow-wrap:break-word;font-family:"${bodyFont}"}` +
     titleRule +
-    headingRules +
     `</style>` +
     `</head><body>${body}</body></html>`
   );
@@ -158,13 +141,18 @@ export function buildWordHtml(
  * Readable plain-text fallback for the `text/plain` clipboard flavor.
  *
  * Operates on the machine-generated fragment shape (all `<p>` plus escaped
- * `& < >`). Entities are unescaped lt/gt BEFORE amp -- the inverse of the
- * renderer's "amp first" escape order -- so `&amp;lt;` decodes to `&lt;`, never `<`.
+ * `& < >`). The `&#160;` nbsp emitted by "blank line after" spacers is dropped
+ * first (so a spacer becomes an empty line, collapsed by the `\n{2,}` pass, not a
+ * literal "&#160;"); it can't match a user's literal "&#160;" text because that
+ * arrives escaped as `&amp;#160;`. Then lt/gt are unescaped BEFORE amp -- the
+ * inverse of the renderer's "amp first" escape order -- so `&amp;lt;` decodes to
+ * `&lt;`, never `<`.
  */
 export function htmlToPlainText(fragment: string): string {
   return fragment
     .replace(/<\/p>/g, "\n")
     .replace(/<[^>]+>/g, "")
+    .replace(/&#160;/g, "")
     .replace(/&lt;/g, "<")
     .replace(/&gt;/g, ">")
     .replace(/&amp;/g, "&")

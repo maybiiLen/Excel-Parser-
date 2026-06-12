@@ -98,6 +98,89 @@ export function defaultMarker(depth: number): MarkerKind {
 }
 
 /**
+ * Per-table multilevel-numbering config (app-drawn STATIC numbers, not Word's).
+ * - `mode: "off"` -- no numbering; the per-level `markers` show instead.
+ * - `mode: "multilevel"` -- the renderer prefixes each node's first line with a
+ *   compounded number path (`5`, `5.1`, `5.1.1`, ...) as plain escaped body text,
+ *   and suppresses that node's marker. The numbers are real text in the preview
+ *   AND the Word output -- nothing becomes a Word heading.
+ * - `start` -- the first top-level number (>= 1); top siblings count from it.
+ *
+ * Numeric only for now; `mode` is shaped as a discriminator so letter/roman
+ * styles could be added later without reshaping callers.
+ *
+ * `levels` (per indent level, index = level − 1, like `markers`) is a per-level
+ * SHOW/HIDE of the number: the compounded path is always computed by full depth
+ * (so numbers never collide), but a level whose entry is `false` renders no number
+ * (its line goes plain). Sparse/short → shown. Lets you number the structural
+ * levels and leave detail levels (e.g. Rationale / Notes) unnumbered.
+ */
+export type NumberingConfig = {
+  mode: "off" | "multilevel";
+  start: number;
+  levels: boolean[];
+};
+
+/** The default (off) numbering config; shared by the renderer and TableState. */
+export const DEFAULT_NUMBERING: NumberingConfig = {
+  mode: "off",
+  start: 1,
+  levels: [],
+};
+
+/**
+ * Assign a multilevel number to every node on a SHOWN (numbered) level, as a clean
+ * contiguous outline over ONLY the numbered levels. Returns a Map from node to its
+ * display number; nodes on hidden levels are absent (they render plain).
+ *
+ * Hidden levels (`numbering.levels[depth-1] === false`) are TRANSPARENT to
+ * numbering: a hidden node gets no number, and its children CONTINUE the numbering
+ * of the nearest shown ancestor (sharing one counter and base path). So the
+ * visible numbers never gap and -- critically -- never COLLIDE: naively dropping a
+ * hidden segment and renumbering by local index would give two texts under two
+ * different hidden parents the same "1.1"; carrying one shared counter across the
+ * hidden siblings makes them 1.1, 1.2, 1.3, ... instead.
+ *
+ * The first SHOWN level reads `${start + i}.0` (start 5 -> "5.0", "6.0"); its
+ * children append `.<1-based index>` to the bare-integer base, so "5.0" nests
+ * "5.1", then "5.1.1". The ".0" is display-only on the top level -- the base
+ * handed to children is the integer, so sublevels never carry a stray ".0".
+ * Digits + dots only, so the result is plain text with nothing to escape.
+ */
+function multilevelNumbers(
+  nodes: PivotNode[],
+  numbering: NumberingConfig,
+): Map<PivotNode, string> {
+  const out = new Map<PivotNode, string>();
+  const assign = (
+    list: PivotNode[],
+    depth: number,
+    parentBase: string,
+    counter: { n: number },
+  ) => {
+    const shown = numbering.levels[depth - 1] !== false;
+    for (const node of list) {
+      if (shown) {
+        const idx = counter.n++;
+        const top = parentBase === "";
+        const base = top
+          ? String(numbering.start + idx)
+          : `${parentBase}.${idx + 1}`;
+        out.set(node, top ? `${base}.0` : base);
+        // A SHOWN level opens a fresh child counter scoped to its own base.
+        assign(node.children, depth + 1, base, { n: 0 });
+      } else {
+        // Transparent level: children keep the SAME counter + base, so numbering
+        // flows continuously across the hidden groups (no gap, no collision).
+        assign(node.children, depth + 1, parentBase, counter);
+      }
+    }
+  };
+  assign(nodes, 1, "", { n: 0 });
+  return out;
+}
+
+/**
  * Render a pivot (nested-rows) tree as one HTML document fragment.
  *
  * The optional `title` is emitted as a distinct `<p class="ws-title">` so
@@ -112,11 +195,29 @@ export function defaultMarker(depth: number): MarkerKind {
  * level's marker (`markers[depth-1]`, falling back to the legacy cycle, counting
  * up per parent); the rest read as plain body lines. The title is never marked.
  *
- * NUMBERING: when `numberDepth > 0`, the FIRST line of each bucket at body depth
- * `<= numberDepth` is tagged `data-heading="K"` (K = `(title?1:0) + depth`,
- * clamped 9) so `buildWordHtml` maps it to `Heading K` and Word supplies the live
- * number (e.g. 5.1, 5.1.1). The app's own text marker is suppressed on those
- * lines (Word owns the number); deeper levels keep their markers.
+ * NUMBERING (app-drawn static numbers): when `numbering.mode === "multilevel"`,
+ * `multilevelNumbers` precomputes a node->number map and the FIRST line of each
+ * numbered node is prefixed with it as plain escaped body text. The top shown
+ * level reads `${start}.0` (start 5 -> "5.0", "6.0"); deeper shown levels append
+ * `.<1-based index>` ("5.1", "5.1.1"). The number replaces (suppresses) that
+ * node's per-level marker, and the leading number/marker inherits the first
+ * field's bold (so bolding a category bolds its number too). The numbers are real
+ * text in BOTH the preview and the
+ * Word output -- nothing becomes a Word heading, so Word's Navigation pane / TOC
+ * stay clean. Numbering is independent of the title (top data siblings number from
+ * `start` whether or not a title exists). `numbering.levels[depth-1] === false`
+ * makes a level TRANSPARENT: its line goes plain AND its children continue the
+ * nearest shown level's sequence, so the visible numbers form a contiguous outline
+ * of only the shown levels -- no gaps (1.0 -> 1.1, never 1.1.1 under a hidden 1.1)
+ * and no collisions (see `multilevelNumbers`).
+ *
+ * BLANK LINE AFTER (`breakAfter[depth-1]`): after a node's WHOLE subtree, an
+ * empty spacer paragraph (`<p ... data-level="N">&#160;</p>` -- a non-breaking
+ * space, no marker/number/label) is pushed, so both the preview and the Word
+ * paste show a blank line between that level's groups. The nbsp keeps Word from
+ * dropping the empty paragraph on paste. Sibling counting is by NODE position,
+ * and spacers are emitted AFTER a node's subtree, so they never perturb the
+ * marker/number counters.
  *
  * The nesting depth rides in a `data-level` ATTRIBUTE, not the tag name (HTML
  * only has h1-h6, and a class like `pl-3` would collide with Tailwind padding
@@ -124,39 +225,59 @@ export function defaultMarker(depth: number): MarkerKind {
  * clamped at 9; deeper nodes still render at level 9.
  *
  * Only user-derived text is escaped; the `class`/`data-*` values are machine
- * constants (single digits), so there is no attribute-injection surface. Returns
- * a bare fragment. Pure: the input is never mutated.
+ * constants (single digits), and the number path is digits + dots, so there is
+ * no attribute-injection surface. Returns a bare fragment. Pure: input unchanged.
  */
 export function renderPivotTree(
   nodes: PivotNode[],
   title?: string,
   markers: MarkerKind[] = [],
   fieldLabels: Record<number, FieldLabel> = {},
-  numberDepth = 0,
+  breakAfter: boolean[] = [],
+  numbering: NumberingConfig = DEFAULT_NUMBERING,
 ): string {
+  const numbered = numbering.mode === "multilevel";
+  // Precompute each numbered node's display number (transparent hidden levels, top
+  // level ".0"). Absent => this node's level is hidden or numbering is off.
+  const numberOf = numbered
+    ? multilevelNumbers(nodes, numbering)
+    : null;
   const blocks: string[] = [];
   const walk = (list: PivotNode[], level: number, depth: number) => {
     const lvl = Math.min(level, 9);
     const kind = markers[depth - 1] ?? defaultMarker(depth);
-    // Word-numbered levels: the bucket's first line becomes a Heading; Word makes
-    // the number, so the app's text marker is suppressed there.
-    const numbered = depth <= numberDepth;
-    const headingK = Math.min((title ? 1 : 0) + depth, 9);
     list.forEach((node, i) => {
-      const m = markerText(kind, i);
+      // Markers render only when numbering is off; a numbered node shows its
+      // precomputed number instead (and a hidden-level node shows neither).
+      const m = numbered ? "" : markerText(kind, i);
+      const num = numberOf?.get(node) ?? "";
       node.lines.forEach((line, j) => {
         const lf = fieldLabels[line.col] ?? DEFAULT_FIELD_LABEL;
-        const label =
-          lf.show && line.name !== "" ? wrapLabel(line.name, lf) : "";
+        const showLabel = lf.show && line.name !== "";
+        const label = showLabel ? wrapLabel(line.name, lf) : "";
         const value = escapeHtml(line.value);
-        const marker = j === 0 && m && !numbered ? `${m} ` : "";
-        const headingAttr =
-          j === 0 && numbered ? ` data-heading="${headingK}"` : "";
+        // First line only: the level's number (when shown) else its marker (only
+        // when numbering is off); a numbered-but-hidden level renders plain.
+        const lead =
+          j === 0
+            ? num
+              ? `${escapeHtml(num)} `
+              : !numbered && m
+                ? `${m} `
+                : ""
+            : "";
+        // The leading number/marker inherits the field's bold, so bolding a
+        // category also bolds its number (one `<b>` run, survives a Word paste).
+        const prefix =
+          lead && showLabel && lf.bold ? `<b>${lead}</b>` : lead;
         blocks.push(
-          `<p class="ws-lvl" data-level="${lvl}"${headingAttr}>${marker}${label}${value}</p>`,
+          `<p class="ws-lvl" data-level="${lvl}">${prefix}${label}${value}</p>`,
         );
       });
       if (node.children.length > 0) walk(node.children, level + 1, depth + 1);
+      // Spacer AFTER the whole subtree, so it never affects sibling counters.
+      if (breakAfter[depth - 1])
+        blocks.push(`<p class="ws-lvl" data-level="${lvl}">&#160;</p>`);
     });
   };
   if (title) {

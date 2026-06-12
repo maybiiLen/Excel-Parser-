@@ -37,19 +37,17 @@ type Props = {
   table: TableState;
   headingStyle: HeadingStyle;
   bodyFont: string;
-  numberDepth: number;
   onChange: (patch: Partial<TableState>) => void;
 };
 
-function TableCardInner({
-  table,
-  headingStyle,
-  bodyFont,
-  numberDepth,
-  onChange,
-}: Props) {
+function TableCardInner({ table, headingStyle, bodyFont, onChange }: Props) {
   const [view, setView] = useState<"rendered" | "json">("rendered");
   const [copyState, setCopyState] = useState<"idle" | "copied" | "error">("idle");
+  // Start-number field held as a string so it can be cleared/retyped (the card is
+  // keyed by table id, so this resets per table); committed to numbering.start only
+  // when it parses to a valid >= 1 integer, and re-synced to the committed value on
+  // blur if left empty/invalid.
+  const [startInput, setStartInput] = useState(String(table.numbering.start));
 
   const { grid, pivotLevels } = table;
 
@@ -80,8 +78,8 @@ function TableCardInner({
   }, [pivotLevels]);
 
   // The whole derive-from-state chain for this one table; recomputed only when
-  // this table's record (or the shared numberDepth) changes.
-  const html = useMemo(() => tableToHtml(table, numberDepth), [table, numberDepth]);
+  // this table's record changes (it carries all the per-table config).
+  const html = useMemo(() => tableToHtml(table), [table]);
 
   // Toggle part of one field's label look (keyed by grid column).
   function patchLabel(col: number, patch: Partial<FieldLabel>) {
@@ -89,6 +87,17 @@ function TableCardInner({
     onChange({
       fieldLabels: { ...table.fieldLabels, [col]: { ...cur, ...patch } },
     });
+  }
+
+  // Cycle one field's sort: off → asc → desc → off (keyed by grid column, so it
+  // persists across remove/re-add). Off removes the key; asc/desc set it.
+  function cycleSort(col: number) {
+    const cur = table.sortDirs[col];
+    const next: Record<number, "asc" | "desc"> = { ...table.sortDirs };
+    if (cur === undefined) next[col] = "asc";
+    else if (cur === "asc") next[col] = "desc";
+    else delete next[col];
+    onChange({ sortDirs: next });
   }
 
   // Write this table's pivot to the clipboard as text/html (+ text/plain
@@ -138,6 +147,54 @@ function TableCardInner({
             className="w-48 rounded-md border border-foreground/20 px-2 py-1 text-sm text-foreground"
           />
         </label>
+        {/* Numbering: app-drawn static multilevel numbers (5, 5.1, 5.1.1) as plain
+            body text. When on, the number replaces the per-level marker. */}
+        <label className="flex items-center gap-1.5 text-sm text-foreground/60">
+          Numbering
+          <select
+            value={table.numbering.mode}
+            onChange={(e) =>
+              onChange({
+                numbering: {
+                  ...table.numbering,
+                  mode: e.target.value as "off" | "multilevel",
+                },
+              })
+            }
+            aria-label="Multilevel numbering mode"
+            className="rounded-md border border-foreground/20 px-2 py-1 text-sm text-foreground"
+          >
+            <option value="off">Off</option>
+            <option value="multilevel">Multilevel numbers</option>
+          </select>
+        </label>
+        {table.numbering.mode === "multilevel" && (
+          <label className="flex items-center gap-1.5 text-sm text-foreground/60">
+            Start
+            <input
+              type="text"
+              inputMode="numeric"
+              value={startInput}
+              onChange={(e) => {
+                const cleaned = e.target.value.replace(/[^0-9]/g, "");
+                setStartInput(cleaned);
+                const n = parseInt(cleaned, 10);
+                if (Number.isFinite(n) && n >= 1) {
+                  onChange({ numbering: { ...table.numbering, start: n } });
+                }
+              }}
+              onBlur={() => {
+                // Left empty or below 1: restore the committed value.
+                const n = parseInt(startInput, 10);
+                if (!Number.isFinite(n) || n < 1) {
+                  setStartInput(String(table.numbering.start));
+                }
+              }}
+              aria-label="Starting number for the top level"
+              className="w-16 rounded-md border border-foreground/20 px-2 py-1 text-sm text-foreground"
+            />
+          </label>
+        )}
         <button
           type="button"
           onClick={() => setView((v) => (v === "rendered" ? "json" : "rendered"))}
@@ -166,14 +223,14 @@ function TableCardInner({
           <div className="flex flex-col gap-1.5">
             <span className="text-foreground/60">
               Add fields{" "}
-              <span className="text-foreground/40">
+              <span className="text-muted">
                 (click to add to the outline)
               </span>
               :
             </span>
             <div className="flex flex-wrap items-center gap-1.5">
               {unused.length === 0 ? (
-                <span className="text-xs text-foreground/40">
+                <span className="text-xs text-muted">
                   All fields added.
                 </span>
               ) : (
@@ -199,7 +256,7 @@ function TableCardInner({
             <div className="flex flex-col gap-1.5">
               <span className="text-foreground/60">
                 Structure{" "}
-                <span className="text-foreground/40">
+                <span className="text-muted">
                   (◄ ► set indent — stack fields at one level to show them
                   together)
                 </span>
@@ -258,6 +315,30 @@ function TableCardInner({
                           U
                         </button>
                       </span>
+                      {/* Sort: off ↕ → asc ↑ → desc ↓ → off, ordering the sibling
+                          groups at this field's indent level. */}
+                      {(() => {
+                        const dir = table.sortDirs[col];
+                        const glyph =
+                          dir === "asc" ? "↑" : dir === "desc" ? "↓" : "↕";
+                        const dirLabel =
+                          dir === "asc"
+                            ? "ascending"
+                            : dir === "desc"
+                              ? "descending"
+                              : "off";
+                        return (
+                          <button
+                            type="button"
+                            aria-label={`Sort by ${name} (${dirLabel})`}
+                            title={`Sort groups by ${name} (currently ${dirLabel}; click to cycle off / ascending / descending)`}
+                            onClick={() => cycleSort(col)}
+                            className={tgl(dir !== undefined)}
+                          >
+                            {glyph}
+                          </button>
+                        );
+                      })()}
                       <span className="flex items-center leading-none">
                         <button
                           type="button"
@@ -331,38 +412,97 @@ function TableCardInner({
             </div>
           )}
 
-          {/* Markers: one picker per indent level (bucket). */}
+          {/* Markers: one picker per indent level (bucket). Multilevel numbering
+              replaces every marker, so swap the pickers for a note when it's on. */}
           {pivotLevels.length > 0 && (
             <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 text-sm text-foreground/70">
               <span className="text-foreground/60">
                 Markers{" "}
-                <span className="text-foreground/40">(per indent level)</span>:
+                <span className="text-muted">(per indent level)</span>:
+              </span>
+              {table.numbering.mode === "multilevel" ? (
+                <span className="text-xs text-muted">
+                  Replaced by Numbering — the number prefixes each group.
+                </span>
+              ) : (
+                pivotLevels.map((_, i) => (
+                  <label
+                    key={i}
+                    className="flex items-center gap-1.5 text-xs text-foreground/60"
+                  >
+                    Lv {i + 1}
+                    <select
+                      value={table.markers[i] ?? defaultMarker(i + 1)}
+                      onChange={(e) => {
+                        const next = [...table.markers];
+                        next[i] = e.target.value as MarkerKind;
+                        onChange({ markers: next });
+                      }}
+                      aria-label={`Marker for indent level ${i + 1}`}
+                      className="rounded-md border border-foreground/20 px-2 py-1 text-sm text-foreground"
+                    >
+                      {MARKER_OPTIONS.map((o) => (
+                        <option key={o.kind} value={o.kind}>
+                          {o.label}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                ))
+              )}
+            </div>
+          )}
+
+          {/* Number level: per-level show/hide of the multilevel number (only when
+              numbering is on). Unchecking a level leaves its line plain while the
+              path still compounds by depth — e.g. number the structural levels and
+              leave Rationale/Notes unnumbered. */}
+          {pivotLevels.length > 0 && table.numbering.mode === "multilevel" && (
+            <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 text-sm text-foreground/70">
+              <span className="text-foreground/60">
+                Number level{" "}
+                <span className="text-muted">(show the number per level)</span>:
               </span>
               {pivotLevels.map((_, i) => (
                 <label
                   key={i}
                   className="flex items-center gap-1.5 text-xs text-foreground/60"
                 >
-                  Lv {i + 1}
-                  <select
-                    value={table.markers[i] ?? defaultMarker(i + 1)}
+                  <input
+                    type="checkbox"
+                    checked={table.numbering.levels[i] !== false}
                     onChange={(e) => {
-                      const next = [...table.markers];
-                      next[i] = e.target.value as MarkerKind;
-                      onChange({ markers: next });
+                      const next = [...table.numbering.levels];
+                      next[i] = e.target.checked;
+                      onChange({
+                        numbering: { ...table.numbering, levels: next },
+                      });
                     }}
-                    aria-label={`Marker for indent level ${i + 1}`}
-                    className="rounded-md border border-foreground/20 px-2 py-1 text-sm text-foreground"
-                  >
-                    {MARKER_OPTIONS.map((o) => (
-                      <option key={o.kind} value={o.kind}>
-                        {o.label}
-                      </option>
-                    ))}
-                  </select>
+                    aria-label={`Show the number on indent level ${i + 1}`}
+                  />
+                  Lv {i + 1}
                 </label>
               ))}
             </div>
+          )}
+
+          {/* Blank line after: a plain on/off. When on, a blank line follows each
+              top-level group (a section separator). Stored as `breakAfter` = [true]
+              (level 1) when on, [] when off. */}
+          {pivotLevels.length > 0 && (
+            <label className="flex items-center gap-1.5 text-sm text-foreground/70">
+              <input
+                type="checkbox"
+                checked={table.breakAfter.some(Boolean)}
+                onChange={(e) =>
+                  onChange({ breakAfter: e.target.checked ? [true] : [] })
+                }
+                aria-label="Add a blank line after each top-level group"
+              />
+              <span className="text-foreground/60">
+                Blank line after each section
+              </span>
+            </label>
           )}
         </div>
       )}
@@ -374,7 +514,6 @@ function TableCardInner({
           html={html}
           headingStyle={headingStyle}
           bodyFont={bodyFont}
-          numbered={numberDepth > 0}
           emptyHint="Add fields above to build the outline. Stack fields at one indent level to show them together (like an Excel pivot's Row Labels)."
         />
       )}

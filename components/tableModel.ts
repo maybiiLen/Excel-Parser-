@@ -3,7 +3,12 @@
 // without a parent <-> child import cycle.
 
 import { rowsToPivotTree } from "@/lib/mapper";
-import { renderPivotTree, type MarkerKind } from "@/lib/renderers";
+import {
+  DEFAULT_NUMBERING,
+  renderPivotTree,
+  type MarkerKind,
+  type NumberingConfig,
+} from "@/lib/renderers";
 import type { FieldLabel, Grid } from "@/lib/types";
 
 /** One pasted table: its grid plus the per-table pivot config the user tweaks. */
@@ -25,6 +30,25 @@ export type TableState = {
    * is removed and re-added). Absent col → the default (label shown, plain).
    */
   fieldLabels: Record<number, FieldLabel>;
+  /**
+   * Per-field sort direction, keyed by grid column index (like `fieldLabels`, so
+   * it persists across remove/re-add). It orders the SIBLING groups at that
+   * field's indent level; absent col → off (first-seen order). When a bucket
+   * stacks several sorted fields, the first in bucket order wins.
+   */
+  sortDirs: Record<number, "asc" | "desc">;
+  /**
+   * "Blank line after" toggle per indent level (index = level − 1, like
+   * `markers`). When on, the renderer pushes one empty spacer paragraph after
+   * that level's whole node-subtree. Sparse/short → off.
+   */
+  breakAfter: boolean[];
+  /**
+   * App-drawn static multilevel numbering for this table (off by default). When
+   * on, the renderer prefixes each node's first line with its compounded number
+   * path (5, 5.1, 5.1.1) as plain body text and suppresses that node's marker.
+   */
+  numbering: NumberingConfig;
   /** Optional title; the one Word heading, above the nested rows. */
   sectionTitle: string;
 };
@@ -135,20 +159,24 @@ export function moveField(levels: number[][], fi: number, dir: -1 | 1): number[]
 }
 
 /**
- * parse -> nest -> render for one table. The optional Section title and the top
- * `numberDepth` levels become Word headings; the rest are styled body paragraphs.
+ * parse -> nest -> render for one table. The optional Section title maps to a
+ * Word heading (in `buildWordHtml`); the body is always app-styled paragraphs.
  * Empty-guard first so a title never renders over nothing. Pure: the single source
- * used by both the card preview and the combined export, so both must pass the
- * shared `numberDepth`.
+ * used by both the card preview and the combined export, so both stay identical.
+ *
+ * The table's own config threads in: `sortDirs` reorders sibling groups in the
+ * mapper post-pass, then `breakAfter` (per-level spacer) and `numbering`
+ * (app-drawn static multilevel numbers) drive the renderer.
  */
-export function tableToHtml(t: TableState, numberDepth = 0): string {
-  const tree = rowsToPivotTree(t.grid, t.pivotLevels);
+export function tableToHtml(t: TableState): string {
+  const tree = rowsToPivotTree(t.grid, t.pivotLevels, t.sortDirs ?? {});
   if (tree.length === 0) return "";
   return renderPivotTree(
     tree,
     t.sectionTitle.trim() || undefined,
     t.markers,
     t.fieldLabels ?? {},
-    numberDepth,
+    t.breakAfter ?? [],
+    t.numbering ?? DEFAULT_NUMBERING,
   );
 }

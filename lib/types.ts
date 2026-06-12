@@ -25,8 +25,9 @@ export interface PivotLine {
  *
  * A node carries `lines` -- one field (`PivotLine`) per field in its bucket
  * (always >= 1), rendered stacked at the same indent. The FIRST line carries the
- * level's marker (or, when numbered, the Word heading); the rest are plain.
- * Children nest one level deeper.
+ * level's marker (or, when multilevel numbering is on, its app-drawn static
+ * number, which replaces the marker); the rest are plain. Children nest one level
+ * deeper.
  */
 export interface PivotNode {
   lines: PivotLine[];

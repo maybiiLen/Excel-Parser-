@@ -4,6 +4,7 @@ import { useMemo, useRef, useState, type ClipboardEvent } from "react";
 import { parseClipboard } from "@/lib/parser";
 import { buildWordHtml, htmlToPlainText } from "@/lib/clipboard";
 import type { HeadingStyle, LevelStyle } from "@/lib/clipboard";
+import { DEFAULT_NUMBERING } from "@/lib/renderers";
 import { tableToHtml, type TableState } from "./tableModel";
 import { TableCard } from "./TableCard";
 
@@ -33,6 +34,10 @@ export function PasteInput() {
   // Each paste appends one table; tables stack down the page in paste order.
   const [tables, setTables] = useState<TableState[]>([]);
   const [error, setError] = useState<string | null>(null);
+  // Polite screen-reader announcement of the last paste result (a visible error
+  // is announced via role="alert"; a success has no visible banner, so it is
+  // mirrored here for non-sighted users).
+  const [status, setStatus] = useState<string>("");
   // Which table's tab is open; only the active table is rendered (no scrolling
   // through the rest). New pastes become active; removing the active tab falls
   // to a neighbor.
@@ -60,10 +65,6 @@ export function PasteInput() {
   // `mso-style-name` so a "Use Destination Styles" paste adopts the destination
   // document's styles. Blank → the app's direct per-level look.
   const [headingStyleName, setHeadingStyleName] = useState<string>("Heading 1");
-  // Number the top N body indent levels as Word headings (Heading 2, 3, ...) so
-  // Word numbers them live (5.1, 5.1.1, ...). 0 = off (app text markers instead).
-  // Shared across tables, like the heading style.
-  const [numberDepth, setNumberDepth] = useState<number>(0);
   const headingStyle = useMemo<HeadingStyle>(() => {
     const clampPt = (s: string, fallback: number) => {
       const n = parseInt(s, 10);
@@ -75,7 +76,10 @@ export function PasteInput() {
       return {
         color: ls?.color ?? DEFAULT_LEVEL.color,
         font: ls?.font ?? DEFAULT_LEVEL.font,
-        size: clampPt(ls?.sizeInput ?? DEFAULT_LEVEL.sizeInput, 13),
+        size: clampPt(
+          ls?.sizeInput ?? DEFAULT_LEVEL.sizeInput,
+          parseInt(DEFAULT_LEVEL.sizeInput, 10),
+        ),
         bold: ls?.bold ?? DEFAULT_LEVEL.bold,
       };
     });
@@ -119,11 +123,15 @@ export function PasteInput() {
         pivotLevels: [], // nothing placed yet; user builds the outline
         markers: [], // sparse -> default 1./a./i. cycle until the user picks
         fieldLabels: {}, // per-col label look; default (shown, plain) until edited
+        sortDirs: {}, // per-col sort; absent col -> off (first-seen order)
+        breakAfter: [], // per-level "blank line after"; default off
+        numbering: DEFAULT_NUMBERING, // app-drawn multilevel numbers; off by default
         sectionTitle: "",
       };
       setTables((prev) => [...prev, next]);
       setActiveId(id); // open the just-pasted table
       setError(null);
+      setStatus(`Added table ${tables.length + 1}.`);
     } catch (err) {
       setError(
         err instanceof Error ? err.message : "Failed to parse the pasted data.",
@@ -164,7 +172,7 @@ export function PasteInput() {
       setTimeout(() => setCopyAllState("idle"), 2000);
       return;
     }
-    const combined = tables.map((t) => tableToHtml(t, numberDepth)).join("\n");
+    const combined = tables.map((t) => tableToHtml(t)).join("\n");
     try {
       const item = new ClipboardItem({
         "text/html": new Blob([buildWordHtml(combined, headingStyle, bodyFont)], {
@@ -202,9 +210,9 @@ export function PasteInput() {
   return (
     <div className="flex w-full flex-col gap-4">
       <div
-        role="textbox"
         tabIndex={0}
-        aria-label="Paste Excel data here"
+        aria-label="Paste area. Focus here, then press Control plus V to paste a table copied from Excel or Google Sheets."
+        aria-keyshortcuts="Control+V"
         onPaste={handlePaste}
         className="flex min-h-[8rem] cursor-text items-center justify-center rounded-xl border-2 border-dashed border-foreground/25 bg-foreground/[0.02] p-6 text-center text-foreground/60 outline-none transition-colors focus:border-foreground/50 focus:bg-foreground/[0.04]"
       >
@@ -240,10 +248,19 @@ export function PasteInput() {
       </div>
 
       {error && (
-        <p className="rounded-lg border border-amber-500/40 bg-amber-500/10 px-4 py-3 text-sm text-amber-700 dark:text-amber-300">
+        <p
+          role="alert"
+          className="rounded-lg border border-amber-500/40 bg-amber-500/10 px-4 py-3 text-sm text-amber-700 dark:text-amber-300"
+        >
           {error}
         </p>
       )}
+
+      {/* Visually-hidden polite live region: announces a successful paste, which
+          has no visible banner of its own. */}
+      <p className="sr-only" role="status" aria-live="polite">
+        {status}
+      </p>
 
       {tables.length > 0 && (
         <div className="flex flex-col gap-3">
@@ -271,7 +288,7 @@ export function PasteInput() {
             </button>
           </div>
 
-          <p className="text-xs text-foreground/50">
+          <p className="text-xs text-muted">
             Set a <strong>Heading style</strong> name (e.g.{" "}
             <strong>Heading 1</strong>) and paste with{" "}
             <strong>Use Destination Styles</strong> so the title adopts your
@@ -292,40 +309,13 @@ export function PasteInput() {
                 className="w-32 rounded-md border border-foreground/20 px-2 py-1 text-sm text-foreground"
               />
             </label>
-            <label className="flex items-center gap-1.5">
-              Number top
-              <select
-                value={Math.min(numberDepth, maxDepth)}
-                onChange={(e) => setNumberDepth(Number(e.target.value))}
-                aria-label="Number the top N levels as Word headings"
-                className="rounded-md border border-foreground/20 px-2 py-1 text-sm text-foreground"
-              >
-                {Array.from({ length: maxDepth + 1 }, (_, n) => (
-                  <option key={n} value={n}>
-                    {n === 0 ? "off" : n}
-                  </option>
-                ))}
-              </select>
-              levels
-            </label>
           </div>
-          {numberDepth > 0 && (
-            <p className="text-xs text-foreground/50">
-              The top {numberDepth} {numberDepth === 1 ? "level" : "levels"} map
-              to <strong>Heading 2{numberDepth > 1 ? "…" : ""}</strong>, so Word
-              numbers them <strong>5.1 / 5.1.1</strong> from your
-              document&rsquo;s heading numbering (needs{" "}
-              <strong>Use Destination Styles</strong>; the preview can&rsquo;t
-              show the number). Numbered items also appear in Word&rsquo;s
-              navigation pane / table of contents.
-            </p>
-          )}
 
           <div className="flex flex-col gap-2 rounded-lg border border-foreground/15 bg-foreground/[0.02] p-3 text-sm text-foreground/70">
             <div className="flex flex-wrap items-center justify-between gap-2">
               <span className="text-foreground/60">
                 Level styles{" "}
-                <span className="text-foreground/40">
+                <span className="text-muted">
                   (style the body; and the title when no Heading style is set)
                 </span>
               </span>
@@ -470,7 +460,6 @@ export function PasteInput() {
               table={activeTable}
               headingStyle={headingStyle}
               bodyFont={bodyFont}
-              numberDepth={numberDepth}
               onChange={(patch) => patchTable(activeTable.id, patch)}
             />
           )}
