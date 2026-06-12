@@ -173,25 +173,28 @@ function TableCardInner({ table, headingStyle, bodyFont, onChange }: Props) {
             Start
             <input
               type="text"
-              inputMode="numeric"
+              inputMode="decimal"
               value={startInput}
               onChange={(e) => {
-                const cleaned = e.target.value.replace(/[^0-9]/g, "");
+                const cleaned = e.target.value.replace(/[^0-9.]/g, "");
                 setStartInput(cleaned);
-                const n = parseInt(cleaned, 10);
-                if (Number.isFinite(n) && n >= 1) {
-                  onChange({ numbering: { ...table.numbering, start: n } });
+                // Commit a valid dotted-decimal (e.g. "5", "5.1", "5.1.2"); it is
+                // the exact number of the first top-level item.
+                if (/^\d+(\.\d+)*$/.test(cleaned)) {
+                  onChange({
+                    numbering: { ...table.numbering, start: cleaned },
+                  });
                 }
               }}
               onBlur={() => {
-                // Left empty or below 1: restore the committed value.
-                const n = parseInt(startInput, 10);
-                if (!Number.isFinite(n) || n < 1) {
-                  setStartInput(String(table.numbering.start));
+                // Left empty/invalid: restore the committed value.
+                if (!/^\d+(\.\d+)*$/.test(startInput)) {
+                  setStartInput(table.numbering.start);
                 }
               }}
-              aria-label="Starting number for the top level"
-              className="w-16 rounded-md border border-foreground/20 px-2 py-1 text-sm text-foreground"
+              aria-label="Starting number for the first item, e.g. 5.1"
+              title="The exact number of the first item (e.g. 5.1 → 5.1, 5.1.1, 5.1.1.1)"
+              className="w-20 rounded-md border border-foreground/20 px-2 py-1 text-sm text-foreground"
             />
           </label>
         )}
@@ -486,22 +489,33 @@ function TableCardInner({ table, headingStyle, bodyFont, onChange }: Props) {
             </div>
           )}
 
-          {/* Blank line after: a plain on/off. When on, a blank line follows each
-              top-level group (a section separator). Stored as `breakAfter` = [true]
-              (level 1) when on, [] when off. */}
+          {/* Blank line after: pick which level's groups get a trailing blank line
+              (a separator → a gap before the next group at that level). Each option
+              is labelled by that level's field name, so it reads "after each MISSION
+              RULE TITLE". Stored as `breakAfter` (boolean[]) with one level set, or
+              [] for none. */}
           {pivotLevels.length > 0 && (
-            <label className="flex items-center gap-1.5 text-sm text-foreground/70">
-              <input
-                type="checkbox"
-                checked={table.breakAfter.some(Boolean)}
-                onChange={(e) =>
-                  onChange({ breakAfter: e.target.checked ? [true] : [] })
-                }
-                aria-label="Add a blank line after each top-level group"
-              />
-              <span className="text-foreground/60">
-                Blank line after each section
-              </span>
+            <label className="flex flex-wrap items-center gap-1.5 text-sm text-foreground/70">
+              <span className="text-foreground/60">Blank line after each</span>
+              <select
+                value={table.breakAfter.findIndex((b) => b) + 1}
+                onChange={(e) => {
+                  const lvl = Number(e.target.value); // 0 = none, else the level
+                  onChange({
+                    breakAfter:
+                      lvl === 0 ? [] : pivotLevels.map((_, i) => i === lvl - 1),
+                  });
+                }}
+                aria-label="Add a blank line after each group at this level"
+                className="rounded-md border border-foreground/20 px-2 py-1 text-sm text-foreground"
+              >
+                <option value={0}>(none)</option>
+                {pivotLevels.map((bucket, i) => (
+                  <option key={i} value={i + 1}>
+                    {headers[bucket[0]] || `Level ${i + 1}`}
+                  </option>
+                ))}
+              </select>
             </label>
           )}
         </div>

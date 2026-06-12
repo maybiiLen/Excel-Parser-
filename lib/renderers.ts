@@ -104,7 +104,10 @@ export function defaultMarker(depth: number): MarkerKind {
  *   compounded number path (`5`, `5.1`, `5.1.1`, ...) as plain escaped body text,
  *   and suppresses that node's marker. The numbers are real text in the preview
  *   AND the Word output -- nothing becomes a Word heading.
- * - `start` -- the first top-level number (>= 1); top siblings count from it.
+ * - `start` -- a dotted-decimal STRING (e.g. "1", "5", "5.1") that is the exact
+ *   number of the FIRST top-level item; top siblings advance its last component
+ *   (Start "5.1" -> 5.1, 5.2) and deeper levels append ".<1-based>" (5.1 -> 5.1.1
+ *   -> 5.1.1.1). So to nest a body under a "5.0" section heading, set Start "5.1".
  *
  * Numeric only for now; `mode` is shaped as a discriminator so letter/roman
  * styles could be added later without reshaping callers.
@@ -117,14 +120,14 @@ export function defaultMarker(depth: number): MarkerKind {
  */
 export type NumberingConfig = {
   mode: "off" | "multilevel";
-  start: number;
+  start: string;
   levels: boolean[];
 };
 
 /** The default (off) numbering config; shared by the renderer and TableState. */
 export const DEFAULT_NUMBERING: NumberingConfig = {
   mode: "off",
-  start: 1,
+  start: "1",
   levels: [],
 };
 
@@ -141,10 +144,9 @@ export const DEFAULT_NUMBERING: NumberingConfig = {
  * different hidden parents the same "1.1"; carrying one shared counter across the
  * hidden siblings makes them 1.1, 1.2, 1.3, ... instead.
  *
- * The first SHOWN level reads `${start + i}.0` (start 5 -> "5.0", "6.0"); its
- * children append `.<1-based index>` to the bare-integer base, so "5.0" nests
- * "5.1", then "5.1.1". The ".0" is display-only on the top level -- the base
- * handed to children is the integer, so sublevels never carry a stray ".0".
+ * The first SHOWN level reads the `start` string with its LAST component advanced
+ * per sibling (Start "5.1" -> "5.1", "5.2"; Start "1" -> "1", "2"); each deeper
+ * shown level appends `.<1-based index>` ("5.1" nests "5.1.1", then "5.1.1.1").
  * Digits + dots only, so the result is plain text with nothing to escape.
  */
 function multilevelNumbers(
@@ -152,6 +154,16 @@ function multilevelNumbers(
   numbering: NumberingConfig,
 ): Map<PivotNode, string> {
   const out = new Map<PivotNode, string>();
+  const start = String(numbering.start || "1");
+  // Advance the LAST dotted component of `start` by `i` (bumpLast("5.1", 1) ->
+  // "5.2"; bumpLast("1", 0) -> "1"); used only at the top shown level.
+  const bumpLast = (i: number): string => {
+    const parts = start.split(".");
+    const k = parts.length - 1;
+    const last = parseInt(parts[k], 10);
+    parts[k] = String((Number.isFinite(last) ? last : 0) + i);
+    return parts.join(".");
+  };
   const assign = (
     list: PivotNode[],
     depth: number,
@@ -162,13 +174,13 @@ function multilevelNumbers(
     for (const node of list) {
       if (shown) {
         const idx = counter.n++;
-        const top = parentBase === "";
-        const base = top
-          ? String(numbering.start + idx)
-          : `${parentBase}.${idx + 1}`;
-        out.set(node, top ? `${base}.0` : base);
-        // A SHOWN level opens a fresh child counter scoped to its own base.
-        assign(node.children, depth + 1, base, { n: 0 });
+        // Top shown level = the Start value (last component advanced per sibling);
+        // deeper levels append ".<1-based index>".
+        const num =
+          parentBase === "" ? bumpLast(idx) : `${parentBase}.${idx + 1}`;
+        out.set(node, num);
+        // A SHOWN level opens a fresh child counter scoped to its own number.
+        assign(node.children, depth + 1, num, { n: 0 });
       } else {
         // Transparent level: children keep the SAME counter + base, so numbering
         // flows continuously across the hidden groups (no gap, no collision).
@@ -198,8 +210,9 @@ function multilevelNumbers(
  * NUMBERING (app-drawn static numbers): when `numbering.mode === "multilevel"`,
  * `multilevelNumbers` precomputes a node->number map and the FIRST line of each
  * numbered node is prefixed with it as plain escaped body text. The top shown
- * level reads `${start}.0` (start 5 -> "5.0", "6.0"); deeper shown levels append
- * `.<1-based index>` ("5.1", "5.1.1"). The number replaces (suppresses) that
+ * level reads the `start` string (last component advanced per sibling: Start "5.1"
+ * -> "5.1", "5.2"); deeper shown levels append `.<1-based index>` ("5.1" -> "5.1.1"
+ * -> "5.1.1.1"). Set Start "5.1" to nest a body under a "5.0" section heading. The number replaces (suppresses) that
  * node's per-level marker, and the leading number/marker inherits the first
  * field's bold (so bolding a category bolds its number too). The numbers are real
  * text in BOTH the preview and the
