@@ -288,7 +288,7 @@ function TableCardInner({ table, headingStyle, bodyFont, onChange }: Props) {
                       <span className="rounded bg-foreground/5 px-2 py-0.5 text-xs text-foreground">
                         {name}
                       </span>
-                      {/* Label look: show/hide "Field:", bold it, underline it. */}
+                      {/* Label look: show/hide "Field:", bold/italic/underline it. */}
                       <span className="flex items-center gap-0.5">
                         <button
                           type="button"
@@ -310,6 +310,17 @@ function TableCardInner({ table, headingStyle, bodyFont, onChange }: Props) {
                           className={`${tgl(lf.bold)} font-bold`}
                         >
                           B
+                        </button>
+                        <button
+                          type="button"
+                          aria-pressed={lf.italic}
+                          disabled={!lf.show}
+                          aria-label={`Italicize the "${name}:" label`}
+                          title="Italicize the label"
+                          onClick={() => patchLabel(col, { italic: !lf.italic })}
+                          className={`${tgl(lf.italic)} italic`}
+                        >
+                          I
                         </button>
                         <button
                           type="button"

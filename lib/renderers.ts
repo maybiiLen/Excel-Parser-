@@ -17,13 +17,17 @@ function escapeHtml(s: string): string {
 
 /**
  * Build the label prefix `Field name: ` for one field, escaped and optionally
- * wrapped in `<b>`/`<u>` per its `FieldLabel`. The `<b>`/`<u>` are inline runs
- * (they survive a Word "Use Destination Styles" paste); the name is escaped, the
- * tags + separator are machine constants.
+ * wrapped in `<b>`/`<i>`/`<u>` per its `FieldLabel`. Underline wraps ONLY the name
+ * (so the ": " separator isn't underlined); bold/italic wrap the whole "name: "
+ * label. The tags are inline runs (they survive a Word "Use Destination Styles"
+ * paste); the name is escaped, the tags + separator are machine constants.
  */
 function wrapLabel(name: string, lf: FieldLabel): string {
-  let html = `${escapeHtml(name)}: `;
-  if (lf.underline) html = `<u>${html}</u>`;
+  const namePart = lf.underline
+    ? `<u>${escapeHtml(name)}</u>`
+    : escapeHtml(name);
+  let html = `${namePart}: `;
+  if (lf.italic) html = `<i>${html}</i>`;
   if (lf.bold) html = `<b>${html}</b>`;
   return html;
 }

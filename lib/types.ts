@@ -36,12 +36,15 @@ export interface PivotNode {
 
 /**
  * Per-field control over the label prefix (`Field name: `): whether it shows at
- * all, and whether it is bold / underlined for emphasis. The value is always
- * shown plain. Stored per grid column in `TableState.fieldLabels`.
+ * all, and whether it is bold / italic / underlined for emphasis. The value is
+ * always shown plain. Bold and italic cover the whole "name: " label; underline
+ * covers only the name (not the ": " separator). Stored per grid column in
+ * `TableState.fieldLabels`.
  */
 export interface FieldLabel {
   show: boolean;
   bold: boolean;
+  italic: boolean;
   underline: boolean;
 }
 
@@ -49,6 +52,7 @@ export interface FieldLabel {
 export const DEFAULT_FIELD_LABEL: FieldLabel = {
   show: true,
   bold: false,
+  italic: false,
   underline: false,
 };
 

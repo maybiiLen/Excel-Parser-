@@ -81,10 +81,10 @@ const FALLBACK_LEVEL: LevelStyle = {
  *
  * Every OTHER body paragraph uses the app's direct per-level look
  * (color/font/size/bold) + indent + compact spacing, emitted as INLINE formatting
- * on each `<p>` (and `<b>`/`<u>` runs for the label) rather than CSS classes. A
+ * on each `<p>` (and `<b>`/`<i>`/`<u>` runs for the label) rather than CSS classes. A
  * "Use Destination Styles" paste discards class/style-name formatting it can't map
  * but KEEPS inline direct formatting + inline runs, so the look, tight spacing,
- * and label bold/underline survive and match the live preview.
+ * and label bold/italic/underline survive and match the live preview.
  */
 export function buildWordHtml(
   fragment: string,
