@@ -34,6 +34,16 @@ npm run dev
 
 Open [http://localhost:3000](http://localhost:3000), click the paste zone, and press **Ctrl/Cmd + V** with a cell range copied from Excel or Google Sheets. Add fields and set their indent levels; the live preview updates. Click **Copy for Word** and paste into a Word document (with *Use Destination Styles* so the title maps to your Heading 1).
 
+## Run with Docker
+
+The app ships a `Dockerfile` (Next.js standalone build, ~305 MB image) and a `docker-compose.yml`. With [Docker](https://www.docker.com/products/docker-desktop/) installed:
+
+```bash
+docker compose up --build
+```
+
+Then open [http://localhost:3000](http://localhost:3000). Press **Ctrl/Cmd + C** in the terminal (or `docker compose down`) to stop. Everything runs client-side inside the container — nothing is uploaded or persisted.
+
 ## Docs
 
 - [docs/OVERVIEW.md](./docs/OVERVIEW.md) — problem, goals, stack, status
